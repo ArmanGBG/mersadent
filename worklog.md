@@ -121,3 +121,32 @@ Stage Summary:
 - `POST /api/admin/brands` now accepts `logo`; `PUT` already accepted it.
 - AdminBrands component uses `form.logo` as single source of truth for the preview; upload works without needing the brand to exist first.
 - Note: the seed-created brands (3M ESPE, AOA, etc.) have `logo: null` in the DB even though seed logo files exist in `public/uploads/brands/` — this is a pre-existing seed-linking issue, not introduced by this change. Admins can now attach logos to any brand via the UI.
+
+---
+Task ID: 4
+Agent: main
+Task: Fix category product counts — parent/mid-level categories were showing 0 in the admin panel even though their sub-categories contained products. Each parent category should show the SUM of all products in its entire descendant sub-tree.
+
+Work Log:
+- Diagnosed: the public `/api/categories` route already aggregated counts recursively (parent productCount = own + sum of children), so the storefront was correct. But the ADMIN route `/api/admin/categories` only included Prisma's `_count: { select: { products: true } }` which is the DIRECT product count only — so parents with no products directly attached showed 0.
+- Confirmed via API: admin tree returned `_count.products=0` for ALL 10 parent categories and all level-2 sub-categories; only level-3 leaf categories had non-zero counts. Public API correctly showed ترمیمی=4, هندپیس‌ها=4, اندودانتیکس=6, etc.
+- The `AdminCategories.tsx` component rendered `c._count?.products || 0` in the products column, so it displayed 0 for every parent.
+
+Fix — `src/app/api/admin/categories/route.ts` GET handler:
+- Tree mode: after fetching the 3-level nested tree, annotate each node with `totalProducts` = own direct products + sum of descendants' totalProducts (computed bottom-up: grandchildren get their direct count; children get own + grandchildren's; parents get own + children's).
+- Flat mode (`?flat=true`): fetch ALL categories flat, build a `parentId -> [childIds]` map, then use a memoized recursive `computeTotal(id)` that sums the category's own products + all descendants' products. Annotate each flat category with `totalProducts`.
+
+Fix — `src/components/admin/AdminCategories.tsx`:
+- Added `totalProducts?: number` to both `CategoryNode` and `FlatCat` interfaces.
+- Changed the products column cell from `{c._count?.products || 0}` to `{c.totalProducts ?? c._count?.products ?? 0}` (fallback for safety).
+
+Verification:
+- API: admin tree now returns totalProducts=4/4/6/5/4/1/1/2/2/4 for the 10 parents (was 0). Level-2 sub-categories also aggregate correctly (e.g. اندودانتیکس → دستگاه=2, ابزار=1, مواد=2, رابردم=1, summing to 6 = parent total).
+- Browser: logged in as admin/admin → دسته‌بندی‌ها. DOM extraction confirmed all parent rows now show non-zero aggregated counts in the محصولات column: ترمیمی و زیبایی=4, هندپیس‌ها=4, اندودانتیکس=6, تجهیزات دندانپزشکی بزرگ=5, جراحی=4, رادیولوژی=1, پریودنتیکس=1, پروتز=2, اطفال و ارتودنسی=2, مواد و تجهیزات عمومی=4.
+- Expanded Endodontics via the single-subtree dropdown: verified the level-2 sub-categories (دستگاه=2, ابزار=1, مواد=2, رابردم=1) sum to exactly 6 = parent total. Level-3 leaves show their direct counts.
+- No compilation/lint errors.
+
+Stage Summary:
+- Admin categories page now shows the AGGREGATED product count (this category + all descendants) for every category at every level, instead of only the direct product count.
+- Both tree mode (used by AdminCategories page) and flat mode (used by AdminProducts category dropdown) return the aggregated `totalProducts` field.
+- Public storefront was already correct (no change needed there).

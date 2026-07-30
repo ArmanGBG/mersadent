@@ -43,6 +43,7 @@ interface CategoryNode {
   visible?: boolean;
   children?: CategoryNode[];
   _count?: { products: number; children: number };
+  totalProducts?: number; // aggregated: own + all descendants' products
 }
 
 interface FlatCat {
@@ -53,6 +54,7 @@ interface FlatCat {
   order: number;
   visible?: boolean;
   _count?: { products: number; children: number };
+  totalProducts?: number; // aggregated: own + all descendants' products
 }
 
 const emptyForm = { name: '', slug: '', parentId: '', visible: true };
@@ -370,7 +372,7 @@ export function AdminCategories({ token }: { token: string }) {
           )}
         </div>
         <div className="py-2.5 px-3 text-gray-500 text-xs hidden md:block min-w-[120px]" dir="ltr">{c.slug}</div>
-        <div className="py-2.5 px-3 text-center min-w-[60px]">{c._count?.products || 0}</div>
+        <div className="py-2.5 px-3 text-center min-w-[60px]">{c.totalProducts ?? c._count?.products ?? 0}</div>
         <div className="py-2.5 px-3 text-center min-w-[60px]">{c._count?.children || 0}</div>
         <div className="py-2.5 px-3 flex items-center justify-center min-w-[60px]">
           <Switch

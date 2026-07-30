@@ -34,13 +34,48 @@ export async function GET(request: NextRequest) {
     const flat = searchParams.get('flat') === 'true';
 
     if (flat) {
-      const categories = await db.category.findMany({
+      // Fetch ALL categories with their direct product counts.
+      // We then compute `totalProducts` (this category + all descendants) in JS
+      // by walking the parentId graph, so parent categories show the sum of all
+      // products in their entire sub-tree instead of just their own direct products.
+      const all = await db.category.findMany({
         orderBy: [{ order: 'asc' }, { name: 'asc' }],
         include: { _count: { select: { products: true, children: true } } },
       });
+
+      // Build a children map: parentId -> [childIds]
+      const childrenMap = new Map<number | null, number[]>();
+      for (const c of all) {
+        const key = c.parentId;
+        const arr = childrenMap.get(key) || [];
+        arr.push(c.id);
+        childrenMap.set(key, arr);
+      }
+
+      // Direct product count lookup
+      const directCount = new Map<number, number>();
+      for (const c of all) directCount.set(c.id, c._count?.products || 0);
+
+      // Memoized recursive total: this category's products + sum of all descendants' products
+      const totalCache = new Map<number, number>();
+      const computeTotal = (id: number): number => {
+        if (totalCache.has(id)) return totalCache.get(id)!;
+        let total = directCount.get(id) || 0;
+        const kids = childrenMap.get(id) || [];
+        for (const kidId of kids) total += computeTotal(kidId);
+        totalCache.set(id, total);
+        return total;
+      };
+
+      const categories = all.map(c => ({
+        ...c,
+        totalProducts: computeTotal(c.id),
+      }));
+
       return NextResponse.json({ categories });
     }
 
+    // Tree mode: build 3-level nested tree with aggregated product counts.
     const parents = await db.category.findMany({
       where: { parentId: null },
       orderBy: [{ order: 'asc' }, { name: 'asc' }],
@@ -59,7 +94,27 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    return NextResponse.json({ categories: parents });
+    // Annotate each node with `totalProducts` = own products + sum of descendants' products
+    const annotated = parents.map((parent) => {
+      const children = (parent.children || []).map((child) => {
+        const grandchildren = (child.children || []).map((gc) => ({
+          ...gc,
+          totalProducts: gc._count?.products || 0,
+        }));
+        return {
+          ...child,
+          children: grandchildren,
+          totalProducts: (child._count?.products || 0) + grandchildren.reduce((s, g) => s + g.totalProducts, 0),
+        };
+      });
+      return {
+        ...parent,
+        children,
+        totalProducts: (parent._count?.products || 0) + children.reduce((s, c) => s + c.totalProducts, 0),
+      };
+    });
+
+    return NextResponse.json({ categories: annotated });
   } catch (error) {
     console.error('Admin categories error:', error);
     return NextResponse.json({ error: 'خطا در دریافت دسته‌بندی‌ها' }, { status: 500 });
