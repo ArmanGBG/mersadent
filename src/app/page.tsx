@@ -334,23 +334,6 @@ function ProductCard({ product, onClick, user, onAuthRequired, onAddToCart, onTo
                 <Badge variant="secondary" className="text-red-500 text-xs">ناموجود</Badge>
               </div>
             )}
-            {/* Product tags */}
-            {product.tags && product.tags.length > 0 && (
-              <div className="absolute top-1.5 right-1.5 flex flex-col gap-1">
-                {product.tags.filter(t => t.tag.type === 'badge' || t.tag.type === 'consumable').map((t) => (
-                  <Badge
-                    key={t.tag.id}
-                    className={`text-[8px] px-1.5 py-0 font-medium ${
-                      t.tag.type === 'consumable'
-                        ? 'bg-orange-100 text-orange-700 border-orange-200'
-                        : 'bg-mersadent-accent/10 text-mersadent-accent border-mersadent-accent/20'
-                    }`}
-                  >
-                    {t.tag.name}
-                  </Badge>
-                ))}
-              </div>
-            )}
           </div>
 
           {/* Info */}

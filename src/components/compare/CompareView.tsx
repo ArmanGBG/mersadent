@@ -570,32 +570,6 @@ export function CompareView({ onBack, onNavigateToProduct }: CompareViewProps) {
             </ValueCell>
           ))}
 
-          {/* ---------- SECTION: تگ‌ها ---------- */}
-          <SectionHeader icon={<Tag className="h-3.5 w-3.5" />}>تگ‌ها</SectionHeader>
-          <LabelCell>تگ‌ها</LabelCell>
-          {items.map((item, i) => {
-            const c = COLUMN_COLORS[i];
-            return (
-              <ValueCell key={item.id} index={i}>
-                {item.tags.length > 0 ? (
-                  <div className="flex flex-wrap gap-1">
-                    {item.tags.map((t) => (
-                      <Badge
-                        key={t.id}
-                        variant="outline"
-                        className={cn('text-[10px]', c.accentSoft, c.text, c.border)}
-                      >
-                        {t.name}
-                      </Badge>
-                    ))}
-                  </div>
-                ) : (
-                  <EmptyDash />
-                )}
-              </ValueCell>
-            );
-          })}
-
           {/* ---------- FOOTER ACTION ROW ---------- */}
           <LabelCell className="bg-gray-100">عملیات</LabelCell>
           {items.map((item, i) => (

@@ -532,3 +532,25 @@ Work Log:
 Stage Summary:
 - Footer credit: "طراحی و توسعه armangbg".
 - Admin access: no visible button anywhere. Reach it via `/#admin` (bookmarkable) or `Ctrl + Shift + A` (keyboard shortcut). Both methods are invisible to regular visitors and verified working.
+
+---
+Task ID: remove-tags-from-ui
+Agent: main
+Task: Remove the "tags" feature from the storefront UI completely. The user noticed tags were still visible — specifically in the product comparison view (مقایسه ۲ محصول) and on product cards. Tags were supposed to have been fully removed from what users see.
+
+Work Log:
+- Found two places where tags were still rendered in the UI:
+  1. `src/components/compare/CompareView.tsx` — a dedicated "تگ‌ها" section (section header + label cell + per-product badge cells) at the bottom of the comparison table.
+  2. `src/app/page.tsx` — a tag-badge overlay on the top-right corner of each product card image (filtered to `badge` / `consumable` tag types).
+- Removed the entire "تگ‌ها" section block from `CompareView.tsx` (the `SectionHeader`, `LabelCell`, and the `items.map` value cells). Kept the `Tag` lucide-react import because it is still used as the icon for the "اطلاعات پایه" section header.
+- Removed the "Product tags" badge overlay block from the `ProductCard` component in `page.tsx`.
+- Left the underlying data plumbing intact (the `tags?` field on the `Product` interface, the `tags` field on `CompareProduct`, the `tags` include in the `/api/featured` and `/api/products` endpoints, and the tag-mapping in `CompareProvider.tsx`). This is deliberate: removing them risks breaking the type system / API contract, and they're now invisible to users. If a full DB/schema purge of tags is desired later, that's a separate decision.
+- Verified with Agent Browser:
+  - Homepage product cards: 0 tag-badge overlays found (queried `[class*="absolute top-1.5 right-1.5"]`).
+  - Compare view (added products, opened compare page): checked section headers — "اطلاعات پایه" ✅, "جزئیات محصول" ✅, "نقاط قوت" ✅, "نقاط ضعف" ✅, "تگ‌ها" ❌ (gone), "تگ" ❌ (gone). All non-tag sections remain intact.
+- `bun run lint` clean for my code (only the pre-existing example-file error remains).
+
+Stage Summary:
+- Tags are no longer visible anywhere in the storefront UI — not on product cards, not in the product comparison table.
+- Two UI blocks removed: the CompareView "تگ‌ها" section and the ProductCard tag-badge overlay.
+- Underlying data layer (DB, API, types) left intact to avoid breaking changes; can be purged in a follow-up if the user wants a full schema cleanup.
