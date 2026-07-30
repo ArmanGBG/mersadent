@@ -57,3 +57,26 @@ Stage Summary:
   2. Drag-and-drop reorder via @dnd-kit + PATCH endpoint; numeric order field removed.
   3. Unified visibility toggle that cascades to descendants for categories and works per-product; hidden items disappear from the storefront but remain in the DB and are still visible to the admin.
   4. Header mega-menu redesigned so each sub-category is a row with grandchildren laid out horizontally, eliminating forced vertical scrolling.
+
+---
+Task ID: 2
+Agent: main
+Task: Add a feature to AdminCategories toolbar: a dropdown that, when a main category is selected, expands ONLY that main category's full sub-tree (instead of "Expand All" which opens every category). Keep existing edit mode and existing "Expand All" / "Collapse All" buttons intact.
+
+Work Log:
+- Read previous worklog (Task ID 1) — confirmed the admin category manager already had expand-all / collapse-all buttons, drag-drop reorder, unified visibility toggle, and parent-context banner.
+- Added `import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'` and `ListTree` icon to AdminCategories.tsx.
+- Added a new `expandSubtree(rootId)` function that recursively collects all descendant IDs of a chosen root category and sets `expanded` to exactly that set (so everything else collapses first, then only that subtree opens).
+- Added a shadcn `Select` dropdown to the toolbar (between "بستن همه" and the reordering spinner) with placeholder "باز کردن فقط یک دسته...". It lists all 10 root categories; selecting one calls `expandSubtree(Number(value))`. The select's value is kept empty so it always shows the placeholder after each pick (acts as an action trigger, not a persistent state).
+- Verified dev server compiled with no errors after the edit.
+- Browser-verified via Agent Browser + VLM:
+  - Logged in as admin/admin, navigated to "دسته‌بندی‌ها".
+  - Opened the new dropdown — confirmed all 10 main categories listed.
+  - Selected "اندودانتیکس" (Endodontics) — VLM analysis of screenshot confirmed ONLY Endodontics's subtree is expanded (2 levels: sub-cats like اندوموتور/فایل‌ها/مواد, and sub-sub-cats like آپکس فایندر/فایل‌های روتری/سیلر MTA). All other 9 main categories remain collapsed.
+  - Clicked "باز کردن همه" — VLM confirmed ALL main categories expanded (existing behavior preserved).
+
+Stage Summary:
+- New capability added without touching the existing edit mode the user liked.
+- Toolbar now has three expansion controls: "باز کردن همه" (all), "بستن همه" (none), and the new dropdown "باز کردن فقط یک دسته..." (single main category's subtree).
+- Selecting a main category from the dropdown collapses everything else first, then expands only the chosen root's full 3-level sub-tree.
+- Verified working end-to-end in the browser; no console/runtime errors.

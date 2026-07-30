@@ -12,6 +12,9 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog';
 import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
+import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
@@ -26,7 +29,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import {
   Plus, Pencil, Trash2, ChevronDown, ChevronLeft, FolderOpen, Loader2,
-  GripVertical, Eye, EyeOff, ArrowDown, ArrowUp,
+  GripVertical, Eye, EyeOff, ArrowDown, ArrowUp, ListTree,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { adminFetch, toSlug } from '@/lib/admin-utils';
@@ -180,6 +183,22 @@ export function AdminCategories({ token }: { token: string }) {
   };
 
   const collapseAll = () => setExpanded(new Set());
+
+  // Expand ONLY the full sub-tree of a single main category (collapses everything else first).
+  // Recursively collects all descendant IDs of the chosen root and adds them to `expanded`.
+  const expandSubtree = (rootId: number) => {
+    const ids = new Set<number>();
+    const collect = (node: CategoryNode | undefined | null) => {
+      if (!node) return;
+      if (node.children && node.children.length > 0) {
+        ids.add(node.id);
+        node.children.forEach(collect);
+      }
+    };
+    const root = categories.find(c => c.id === rootId);
+    collect(root);
+    setExpanded(ids);
+  };
 
   // Toggle visibility with cascade handled on the backend
   const toggleVisible = async (c: CategoryNode) => {
@@ -421,13 +440,34 @@ export function AdminCategories({ token }: { token: string }) {
     <div className="space-y-4" dir="rtl">
       {/* Toolbar */}
       <div className="flex flex-wrap justify-between items-center gap-3">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" onClick={expandAll}>
             <ChevronDown className="w-4 h-4 ml-1" /> باز کردن همه
           </Button>
           <Button variant="outline" size="sm" onClick={collapseAll}>
             <ChevronLeft className="w-4 h-4 ml-1" /> بستن همه
           </Button>
+          {/* Expand only one main category's subtree */}
+          <div className="flex items-center gap-1.5">
+            <ListTree className="w-4 h-4 text-muted-foreground" />
+            <Select
+              value=""
+              onValueChange={(v) => {
+                if (v) expandSubtree(Number(v));
+              }}
+            >
+              <SelectTrigger className="h-8 w-[200px] text-xs" size="sm">
+                <SelectValue placeholder="باز کردن فقط یک دسته..." />
+              </SelectTrigger>
+              <SelectContent dir="rtl">
+                {categories.map(c => (
+                  <SelectItem key={c.id} value={String(c.id)}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           {reordering && (
             <span className="text-xs text-muted-foreground flex items-center gap-1">
               <Loader2 className="w-3 h-3 animate-spin" /> در حال ذخیره ترتیب...
