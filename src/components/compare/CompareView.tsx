@@ -128,7 +128,7 @@ function LabelCell({ children, className }: { children: React.ReactNode; classNa
   return (
     <div
       className={cn(
-        'sticky right-0 z-20 flex items-center bg-gray-50 p-3 text-xs font-bold text-gray-500',
+        'sticky right-0 z-20 flex items-center bg-gray-50 p-3 text-xs font-bold text-mersadent-dark',
         className,
       )}
     >
@@ -140,8 +140,8 @@ function LabelCell({ children, className }: { children: React.ReactNode; classNa
 /** Full-width section divider row. */
 function SectionHeader({ children, icon }: { children: React.ReactNode; icon?: React.ReactNode }) {
   return (
-    <div className="col-span-full z-10 flex items-center gap-2 bg-mersadent-dark/95 px-3 py-2.5 text-xs font-bold text-white sm:text-sm">
-      {icon && <span className="text-teal-300">{icon}</span>}
+    <div className="col-span-full z-10 flex items-center gap-2 bg-mersadent-accent/10 border-y border-mersadent-accent/20 px-3 py-2.5 text-xs font-bold text-mersadent-dark sm:text-sm">
+      {icon && <span className="text-mersadent-accent">{icon}</span>}
       {children}
     </div>
   );

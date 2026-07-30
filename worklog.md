@@ -554,3 +554,26 @@ Stage Summary:
 - Tags are no longer visible anywhere in the storefront UI — not on product cards, not in the product comparison table.
 - Two UI blocks removed: the CompareView "تگ‌ها" section and the ProductCard tag-badge overlay.
 - Underlying data layer (DB, API, types) left intact to avoid breaking changes; can be purged in a follow-up if the user wants a full schema cleanup.
+
+---
+Task ID: fix-blog-banner-and-compare-headers
+Agent: main
+Task: Two UI fixes — (1) the homepage "مقالات آموزشی" banner had a dark gradient that the user disliked and found hard to read ("اصلا واضح دیده نمیشه"); (2) in the product comparison view, the section header titles were white-on-dark and the user wanted them black so they'd be visible.
+
+Work Log:
+- **Banner redesign** (`BlogPreviewSection` in `src/app/page.tsx`):
+  - Replaced the dark gradient (`bg-gradient-to-l from-mersadent-dark via-mersadent-dark to-[#1e2d4d]` + `text-white`) with a clean light card: `bg-white` + `border-2 border-mersadent-accent/40` (solid teal border, stronger on hover).
+  - Added a 1.5px teal accent bar on the right edge (`absolute inset-y-0 right-0 w-1.5 bg-mersadent-accent`) as a visual anchor.
+  - Swapped the icon container from translucent teal-on-dark to a solid teal fill (`bg-mersadent-accent text-white`) so it pops.
+  - Title text changed from default white to `text-mersadent-dark` (dark navy); subtitle from `text-gray-300` to `text-gray-500` for stronger contrast on the white card.
+- **Compare view headers** (`src/components/compare/CompareView.tsx`):
+  - `SectionHeader` (the full-width dividers: اطلاعات پایه / جزئیات محصول / مشخصات فنی / نقاط قوت / نقاط ضعف): changed from `bg-mersadent-dark/95 text-white` (white-on-dark) to `bg-mersadent-accent/10 border-y border-mersadent-accent/20 text-mersadent-dark` (dark text on a light teal-tinted band with top/bottom borders). The icon color also changed from `text-teal-300` to `text-mersadent-accent` for consistency.
+  - `LabelCell` (the rightmost sticky column row labels like قیمت / وضعیت / کشور سازنده): changed `text-gray-500` → `text-mersadent-dark` for darker, more readable text against the `bg-gray-50` cells.
+- Verified both changes with Agent Browser + VLM:
+  - New banner: VLM reports "clean, solid white background", "dark navy text very bold and high-contrast", "very clean and clear — does not look muddy at all".
+  - New compare headers: VLM confirms section headers are now "light gray background, dark navy text, clearly readable with high contrast" and row labels are "dark gray/charcoal, clearly readable".
+- `bun run lint` clean for my code (only the pre-existing example-file error remains).
+
+Stage Summary:
+- Homepage articles banner: replaced the muddy dark gradient with a clean white card + teal accent border + solid teal icon + dark navy title text. Much more readable.
+- Compare view: section headers (اطلاعات پایه, جزئیات محصول, نقاط قوت, نقاط ضعف, مشخصات فنی) now use dark text on a light teal-tinted band instead of white-on-dark. Row labels in the sticky right column also darkened for better contrast.

@@ -2879,18 +2879,21 @@ function BlogPreviewSection({ onNavigate }: { onNavigate: (view: PageView) => vo
       <button
         type="button"
         onClick={() => { onNavigate({ type: 'blog' }); window.scrollTo(0, 0); }}
-        className="group w-full relative overflow-hidden rounded-2xl border border-mersadent-accent/20 bg-gradient-to-l from-mersadent-dark via-mersadent-dark to-[#1e2d4d] text-white p-6 sm:p-8 flex items-center justify-between gap-4 text-right hover:border-mersadent-accent/50 hover:shadow-lg transition-all"
+        className="group w-full relative overflow-hidden rounded-2xl border-2 border-mersadent-accent/40 bg-white p-5 sm:p-6 flex items-center justify-between gap-4 text-right hover:border-mersadent-accent hover:shadow-md transition-all"
       >
-        {/* Decorative icon */}
+        {/* Accent side bar */}
+        <div className="absolute inset-y-0 right-0 w-1.5 bg-mersadent-accent" aria-hidden="true" />
+
+        {/* Content */}
         <div className="flex items-center gap-4 flex-1 min-w-0">
-          <div className="flex-shrink-0 w-14 h-14 sm:w-16 sm:h-16 rounded-xl bg-mersadent-accent/15 text-mersadent-accent flex items-center justify-center group-hover:bg-mersadent-accent/25 transition-colors">
+          <div className="flex-shrink-0 w-14 h-14 sm:w-16 sm:h-16 rounded-xl bg-mersadent-accent text-white flex items-center justify-center shadow-sm group-hover:bg-mersadent-accent/90 transition-colors">
             <BookOpen className="w-7 h-7 sm:w-8 sm:h-8" />
           </div>
           <div className="flex flex-col gap-1 min-w-0">
-            <h2 className="text-base sm:text-lg font-bold leading-7">
+            <h2 className="text-base sm:text-lg font-bold leading-7 text-mersadent-dark">
               مقالات آموزشی را از اینجا بخوانید
             </h2>
-            <p className="text-xs sm:text-sm text-gray-300 leading-6 line-clamp-2">
+            <p className="text-xs sm:text-sm text-gray-500 leading-6 line-clamp-2">
               جدیدترین مطالب و راهنماهای تخصصی دندانپزشکی را در بخش مقالات دنبال کنید.
             </p>
           </div>
