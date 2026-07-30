@@ -228,3 +228,41 @@ Stage Summary:
 - Active tab is highlighted based on the current view; cart badge shows count when non-zero.
 - Search uses a dedicated bottom sheet with autofocus; the critical `onSearch` vs `onNavigate` bug was caught and fixed during testing.
 - Verified end-to-end in the browser (mobile + desktop viewports) with VLM screenshot analysis.
+
+---
+Task ID: 7
+Agent: main
+Task: Fix the "محصولات ویژه" (Featured Products) panel which was rendering unlimited/all featured products and breaking the page dimensions, then audit the responsiveness of the entire site.
+
+Work Log:
+- Diagnosed the featured panel bug via Agent Browser + DOM inspection on a 390px mobile viewport:
+  - `document.documentElement.scrollWidth` was 1280px (viewport only 390px) → the whole page had horizontal overflow.
+  - The featured `<section className="max-w-7xl mx-auto px-4 sm:px-6">` was being forced to 1280px wide even though its parent was 390px.
+  - Root cause: the HomePage root was `<div className="flex flex-col gap-8 pb-8">`. The section was a FLEX ITEM of that flex-column. Flex items default to `min-width: auto` (= min-content size). The section's min-content was the sum of the non-shrinkable carousel cards (14 × 192px = 2688px), capped by `max-w-7xl` (1280px). Additionally, `mx-auto` on a flex item disables `align-items: stretch`, so the section didn't fill the parent width — it stayed at its content size (1280px) and overflowed.
+- Fix 1 (home page root): changed `<div className="flex flex-col gap-8 pb-8">` → `<div className="space-y-8 pb-8">`. Block layout (with `space-y-8` for vertical spacing) makes the sections normal block elements where `width: auto` = fill parent, and `mx-auto` centers properly. `max-w-7xl` caps width. No flex-item min-width quirk.
+- Fix 2 (defensive safety net): added `min-w-0 overflow-x-clip` to the global `<main className="flex-1 py-6 sm:py-8">` wrapper. `min-w-0` lets the flex item shrink to viewport width; `overflow-x-clip` clips any residual horizontal overflow from ANY page view without creating a vertical scroll container (unlike `overflow-x-hidden` which would force `overflow-y: auto`). This prevents the whole page from ever scrolling horizontally regardless of what page views render.
+- Verified the featured panel fix on mobile (390px): `docScrollW` dropped from 1280 → 390 (no overflow), section width 390px, scroll container scrolls internally (scrollWidth 2876px, clientWidth 390px). VLM confirmed cards display ~2 at a time with horizontal swipe.
+- Verified on desktop (1280px): section 1280px (max-w-7xl centered), scroll container 1232px with 3292px scrollable content, carousel works with hover arrows. No page overflow.
+
+Responsiveness audit (Agent Browser + VLM, mobile 390px / tablet 768px / desktop 1280px):
+- Home page: no horizontal overflow at any viewport. Hero, categories grid, featured carousel, brands marquee, blog cards all render correctly.
+- Category listing page (همه دسته‌بندی‌ها): no overflow; sub-category chips wrap properly.
+- Sub-category page (کامپوزیت): no overflow; product grid collapses to 2 columns on mobile.
+- Product detail page: no overflow; image + info stack vertically on mobile, side-by-side on desktop. "مشخصات فنی" and "توضیحات محصول" sections render fine.
+- Search results page (نتایج جستجو برای "کامپوزیت"): no overflow; results grid responsive.
+- Compare view (2 products): no overflow; the `min-w-[760px]` comparison grid is wrapped in `overflow-x-auto` so it scrolls horizontally within the viewport on mobile. VLM confirmed sticky label column + scrollable product columns pattern works.
+- Brands page (همه برندها): no overflow; brand grid responsive.
+- Blog page (مقالات آموزشی): no overflow.
+- About page (درباره مرصادنت): no overflow.
+- Admin dashboard: no overflow; sidebar collapses to hamburger menu on mobile; stat cards stack vertically; activity table renders as clean list.
+- Admin products: no overflow; table converts to card/list layout on mobile; action buttons accessible.
+- Admin categories: no overflow (page-level); the flex-row category items use `min-w-[60px]` columns which are cramped on mobile but fit within 390px (slug column is `hidden md:block`). Functional, not broken.
+- Admin orders: no overflow; filter chips wrap; empty state centered.
+- Mobile sticky footer + bottom nav: verified at scroll-to-bottom — footer content (including "پنل مدیریت" button) is fully visible and NOT hidden behind the fixed bottom nav bar; the `h-16` spacer works correctly.
+- Lint: clean (only the pre-existing unrelated error in mersadent-clone/examples/websocket/frontend.tsx).
+
+Stage Summary:
+- The featured products panel bug is FIXED: the carousel now scrolls horizontally within the viewport on mobile instead of pushing the page to 1280px wide. Root cause was the home page root using `flex flex-col` whose flex-item children with `mx-auto` didn't stretch to parent width.
+- A defensive `min-w-0 overflow-x-clip` was added to the global `<main>` to prevent any future horizontal page overflow from any page view.
+- Full site responsiveness audited across 12+ pages at 3 viewports. No horizontal overflow found anywhere. All carousels scroll internally, all grids collapse on mobile, all tables either convert to cards or scroll within containers, admin sidebar collapses to hamburger, mobile bottom nav + sticky footer work correctly.
+- No other responsive bugs required fixing — the site was already well-structured; the featured panel was the one breakage point.

@@ -1,0 +1,2002 @@
+     1→'use client';
+     2→
+     3→// ============================================================
+     4→// IMPORTS
+     5→// ============================================================
+     6→import { useState, useEffect, useRef, useCallback } from 'react';
+     7→import { motion, AnimatePresence } from 'framer-motion';
+     8→import {
+     9→  Search, Menu, ChevronLeft, ChevronRight, ChevronDown, Home, Phone,
+    10→  Clock, MapPin, Mail, Star, Filter, SlidersHorizontal,
+    11→  Package, ShoppingBag, MessageCircle, Truck, Shield, Award,
+    12→  Users, FileText, Cog, Lightbulb, Camera, Zap, Settings, ShieldCheck,
+    13→  RotateCcw, Send, CheckCircle2, AlertCircle, BookOpen, Calendar, ArrowLeft,
+    14→  Wrench, AlertTriangle, ShoppingCart, HeartPulse, ExternalLink,
+    15→  LogIn, User, X, Plus, Minus, Loader2, GitCompareArrows, LayoutGrid
+    16→} from 'lucide-react';
+    17→import { AuthModal } from '@/components/auth/AuthModal';
+    18→import { CartSidebar } from '@/components/cart/CartSidebar';
+    19→import { CartPage } from '@/components/cart/CartPage';
+    20→import { CheckoutPage } from '@/components/checkout/CheckoutPage';
+    21→import { UserPanel } from '@/components/user/UserPanel';
+    22→import { OrderDetailPage } from '@/components/user/OrderDetailPage';
+    23→import {
+    24→  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+    25→  DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuLabel
+    26→} from '@/components/ui/dropdown-menu';
+    27→import { Button } from '@/components/ui/button';
+    28→import { Input } from '@/components/ui/input';
+    29→import { Badge } from '@/components/ui/badge';
+    30→import { Card, CardContent } from '@/components/ui/card';
+    31→import { Slider } from '@/components/ui/slider';
+    32→import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet';
+    33→import { Skeleton } from '@/components/ui/skeleton';
+    34→import { Separator } from '@/components/ui/separator';
+    35→import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
+    36→
+    37→import {
+    38→  Dialog,
+    39→  DialogContent,
+    40→  DialogHeader,
+    41→  DialogTitle,
+    42→  DialogDescription,
+    43→} from '@/components/ui/dialog';
+    44→import {
+    45→  Drawer,
+    46→  DrawerClose,
+    47→  DrawerContent,
+    48→  DrawerFooter,
+    49→  DrawerHeader,
+    50→  DrawerTitle,
+    51→  DrawerTrigger,
+    52→} from '@/components/ui/drawer';
+    53→import {
+    54→  Select,
+    55→  SelectContent,
+    56→  SelectItem,
+    57→  SelectTrigger,
+    58→  SelectValue,
+    59→} from '@/components/ui/select';
+    60→import { toast, Toaster } from 'sonner';
+    61→import {
+    62→  AdminLogin, AdminLayout, AdminDashboard, AdminProducts,
+    63→  AdminCategories, AdminBrands, AdminBlog, AdminBlogCategories, AdminSettings,
+    64→  AdminOrders,
+    65→} from '@/components/admin';
+    66→import { CompareProvider, CompareFloatingBar, CompareView, useCompare } from '@/components/compare';
+    67→
+    68→// ============================================================
+    69→// TYPES
+    70→// ============================================================
+    71→interface CategoryChild {
+    72→  id: number;
+    73→  name: string;
+    74→  slug: string;
+    75→  parentId: number;
+    76→  children: CategoryChild[];
+    77→  productCount: number;
+    78→  order: number;
+    79→}
+    80→
+    81→interface Category {
+    82→  id: number;
+    83→  name: string;
+    84→  slug: string;
+    85→  parentId: number | null;
+    86→  children: CategoryChild[];
+    87→  productCount: number;
+    88→  order: number;
+    89→}
+    90→
+    91→interface Brand {
+    92→  id: number;
+    93→  name: string;
+    94→  slug: string;
+    95→  logo: string | null;
+    96→  visible: boolean;
+    97→  _count: { products: number };
+    98→}
+    99→
+   100→interface ProductImage {
+   101→  id: number;
+   102→  url: string;
+   103→  alt: string | null;
+   104→  order: number;
+   105→}
+   106→
+   107→interface Product {
+   108→  id: number;
+   109→  name: string;
+   110→  slug: string;
+   111→  sku: string | null;
+   112→  model: string | null;
+   113→  price: number | null;
+   114→  priceType: string;
+   115→  availability: string;
+   116→  specs: string | null;
+   117→  discountPercent: number;
+   118→  description: string | null;
+   119→  strengths: string | null;
+   120→  weaknesses: string | null;
+   121→  country: string | null;
+   122→  warranty: string | null;
+   123→  weight: string | null;
+   124→  lowStock: number;
+   125→  categoryId: number;
+   126→  brandId: number;
+   127→  featured: boolean;
+   128→  brand: { id: number; name: string; slug: string };
+   129→  category: { id: number; name: string; slug: string; parent?: { id: number; name: string; slug: string; parent?: { id: number; name: string; slug: string } | null } | null };
+   130→  images?: ProductImage[];
+   131→  tags?: { tag: { id: number; name: string; slug: string; type: string } }[];
+   132→}
+   133→
+   134→interface BlogCategory {
+   135→  id: number;
+   136→  name: string;
+   137→  slug: string;
+   138→  description: string | null;
+   139→  _count: { posts: number };
+   140→  order: number;
+   141→}
+   142→
+   143→interface BlogPostListItem {
+   144→  id: number;
+   145→  title: string;
+   146→  slug: string;
+   147→  excerpt: string;
+   148→  coverImage: string | null;
+   149→  readTime: number;
+   150→  createdAt: string;
+   151→  category: { id: number; name: string; slug: string };
+   152→}
+   153→
+   154→interface BlogPostFull extends BlogPostListItem {
+   155→  content: string;
+   156→}
+   157→
+   158→interface SearchResult {
+   159→  id: number;
+   160→  name: string;
+   161→  brand: string;
+   162→  brandSlug: string;
+   163→  category: string;
+   164→  categorySlug: string;
+   165→  price: number | null;
+   166→  priceType: string;
+   167→  availability: string;
+   168→  model: string | null;
+   169→  featured: boolean;
+   170→  country: string | null;
+   171→  sku: string | null;
+   172→}
+   173→
+   174→interface UserData {
+   175→  id: number;
+   176→  name: string | null;
+   177→  phone: string | null;
+   178→  email: string | null;
+   179→  avatar: string | null;
+   180→}
+   181→
+   182→type PageView =
+   183→  | { type: 'home' }
+   184→  | { type: 'category'; categoryId: number; slug: string; parentName?: string; parentSlug?: string }
+   185→  | { type: 'brand'; brandId: number; brandName: string }
+   186→  | { type: 'product'; productId: number }
+   187→  | { type: 'search'; query: string }
+   188→  | { type: 'about' }
+   189→  | { type: 'blog'; categorySlug?: string }
+   190→  | { type: 'blogPost'; slug: string }
+   191→  | { type: 'adminLogin' }
+   192→  | { type: 'admin'; section?: string }
+   193→  | { type: 'cart' }
+   194→  | { type: 'checkout' }
+   195→  | { type: 'user'; tab?: string }
+   196→  | { type: 'order-detail'; orderId: number }
+   197→  | { type: 'compare' };
+   198→
+   199→// ============================================================
+   200→// HELPERS
+   201→// ============================================================
+   202→const formatPrice = (price: number | null) => {
+   203→  if (price === null) return 'استعلام قیمت';
+   204→  return new Intl.NumberFormat('fa-IR').format(price) + ' تومان';
+   205→};
+   206→
+   207→const useDebounce = (value: string, delay: number) => {
+   208→  const [debounced, setDebounced] = useState(value);
+   209→  useEffect(() => {
+   210→    const t = setTimeout(() => setDebounced(value), delay);
+   211→    return () => clearTimeout(t);
+   212→  }, [value, delay]);
+   213→  return debounced;
+   214→};
+   215→
+   216→// Category icon mapping
+   217→const getCategoryIcon = (slug: string) => {
+   218→  switch (slug) {
+   219→    case 'endo': return <FileText className="w-7 h-7" />;
+   220→    case 'turbine-angle': return <Cog className="w-7 h-7" />;
+   221→    case 'curing-scaler': return <Lightbulb className="w-7 h-7" />;
+   222→    case 'imaging': return <Camera className="w-7 h-7" />;
+   223→    case 'motors': return <Zap className="w-7 h-7" />;
+   224→    case 'clinic-equipment': return <Settings className="w-7 h-7" />;
+   225→    case 'sterilization-consumables': return <ShieldCheck className="w-7 h-7" />;
+   226→    default: return <Package className="w-7 h-7" />;
+   227→  }
+   228→};
+   229→
+   230→const availabilityLabel = (status: string) => {
+   231→  switch (status) {
+   232→    case 'in_stock': return { text: 'موجود', variant: 'default' as const, color: 'bg-emerald-100 text-emerald-700' };
+   233→    case 'out_of_stock': return { text: 'ناموجود', variant: 'secondary' as const, color: 'bg-red-100 text-red-600' };
+   234→    case 'call': return { text: 'تماس بگیرید', variant: 'outline' as const, color: 'bg-amber-100 text-amber-700' };
+   235→    default: return { text: 'نامشخص', variant: 'secondary' as const, color: 'bg-gray-100 text-gray-600' };
+   236→  }
+   237→};
+   238→
+   239→// ============================================================
+   240→// ANIMATION VARIANTS
+   241→// ============================================================
+   242→const fadeIn = {
+   243→  initial: { opacity: 0, y: 12 },
+   244→  animate: { opacity: 1, y: 0 },
+   245→  exit: { opacity: 0, y: -12 },
+   246→  transition: { duration: 0.25 },
+   247→};
+   248→
+   249→const staggerContainer = {
+   250→  animate: { transition: { staggerChildren: 0.05 } },
+   251→};
+   252→
+   253→const staggerItem = {
+   254→  initial: { opacity: 0, y: 16 },
+   255→  animate: { opacity: 1, y: 0 },
+   256→};
+   257→
+   258→// ============================================================
+   259→// PRODUCT CARD
+   260→// ============================================================
+   261→function ProductCard({ product, onClick, user, onAuthRequired, onAddToCart, onToggleCompare, isInCompare }: { product: Product; onClick: () => void; user: UserData | null; onAuthRequired: () => void; onAddToCart: (productId: number) => void; onToggleCompare: () => void; isInCompare: boolean }) {
+   262→  const av = availabilityLabel(product.availability);
+   263→  const hasDiscount = product.discountPercent > 0 && product.price !== null && product.priceType !== 'call';
+   264→  const discountedPrice = hasDiscount ? Math.round(product.price! * (1 - product.discountPercent / 100)) : null;
+   265→  const canAdd = product.availability === 'in_stock' && product.price !== null && product.priceType !== 'call';
+   266→  const [adding, setAdding] = useState(false);
+   267→
+   268→  const handleAddToCart = async (e: React.MouseEvent) => {
+   269→    e.stopPropagation();
+   270→    if (!user) { onAuthRequired(); return; }
+   271→    if (adding) return;
+   272→    setAdding(true);
+   273→    await onAddToCart(product.id);
+   274→    setAdding(false);
+   275→  };
+   276→
+   277→  return (
+   278→    <motion.div whileHover={{ y: -4 }} transition={{ type: 'spring', stiffness: 300, damping: 20 }}>
+   279→      <Card
+   280→        className="cursor-pointer group h-full border border-gray-100 hover:border-mersadent-accent/40 hover:shadow-lg transition-all duration-300 overflow-hidden"
+   281→        onClick={onClick}
+   282→      >
+   283→        <CardContent className="p-3 flex flex-col gap-2">
+   284→          {/* Image or placeholder */}
+   285→          <div className="relative w-full aspect-square bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg flex items-center justify-center group-hover:from-mersadent-accent/5 group-hover:to-mersadent-accent/10 transition-colors overflow-hidden">
+   286→            {product.images && product.images.length > 0 ? (
+   287→              <img
+   288→                src={product.images[0].url}
+   289→                alt={product.images[0].alt || product.name}
+   290→                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+   291→                loading="lazy"
+   292→              />
+   293→            ) : (
+   294→              <Package className="w-10 h-10 text-gray-300 group-hover:text-mersadent-accent/50 transition-colors" />
+   295→            )}
+   296→            {/* Top badges: featured + discount */}
+   297→            <div className="absolute top-1.5 left-1.5 flex flex-col gap-1">
+   298→              {hasDiscount && (
+   299→                <Badge className="bg-red-500 text-white text-[9px] px-1.5 py-0">
+   300→                  تخفیف {product.discountPercent}%
+   301→                </Badge>
+   302→              )}
+   303→              {product.featured && (
+   304→                <Badge className="bg-amber-500 text-white text-[9px] px-1 py-0">
+   305→                  <Star className="w-2.5 h-2.5 ml-0.5" />
+   306→                  ویژه
+   307→                </Badge>
+   308→              )}
+   309→            </div>
+   310→            {/* Compare toggle button */}
+   311→            <button
+   312→              onClick={(e) => { e.stopPropagation(); onToggleCompare(); }}
+   313→              className={`absolute bottom-1.5 left-1.5 w-7 h-7 rounded-full flex items-center justify-center transition-all duration-200 z-10 ${isInCompare ? 'bg-teal-500 text-white shadow-md opacity-100' : 'bg-white/90 text-gray-400 hover:text-teal-500 hover:bg-white shadow-sm opacity-80 group-hover:opacity-100'}`}
+   314→              title={isInCompare ? 'حذف از لیست مقایسه' : 'افزودن به لیست مقایسه'}
+   315→              aria-label={isInCompare ? 'حذف از مقایسه' : 'افزودن به مقایسه'}
+   316→              aria-pressed={isInCompare}
+   317→            >
+   318→              <GitCompareArrows className="w-3.5 h-3.5" />
+   319→            </button>
+   320→            {/* Add to cart button */}
+   321→            {canAdd && (
+   322→              <button
+   323→                onClick={handleAddToCart}
+   324→                disabled={adding}
+   325→                className="absolute bottom-1.5 left-9 w-7 h-7 bg-white/90 hover:bg-mersadent-accent text-mersadent-dark hover:text-white rounded-full flex items-center justify-center shadow-md opacity-0 group-hover:opacity-100 transition-all duration-200 disabled:opacity-60"
+   326→                title="افزودن به سبد خرید"
+   327→              >
+   328→                {adding ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShoppingCart className="w-3.5 h-3.5" />}
+   329→              </button>
+   330→            )}
+   331→            {product.availability === 'out_of_stock' && (
+   332→              <div className="absolute inset-0 bg-white/70 rounded-lg flex items-center justify-center">
+   333→                <Badge variant="secondary" className="text-red-500 text-xs">ناموجود</Badge>
+   334→              </div>
+   335→            )}
+   336→            {/* Low stock indicator */}
+   337→            {product.lowStock > 0 && product.availability === 'in_stock' && (
+   338→              <Badge className="absolute bottom-1.5 right-1.5 bg-red-500 text-white text-[9px] px-1.5 py-0 font-bold">
+   339→                فقط {new Intl.NumberFormat('fa-IR').format(product.lowStock)} عدد مانده
+   340→              </Badge>
+   341→            )}
+   342→            {/* Product tags */}
+   343→            {product.tags && product.tags.length > 0 && (
+   344→              <div className="absolute top-1.5 right-1.5 flex flex-col gap-1">
+   345→                {product.tags.filter(t => t.tag.type === 'badge' || t.tag.type === 'consumable').map((t) => (
+   346→                  <Badge
+   347→                    key={t.tag.id}
+   348→                    className={`text-[8px] px-1.5 py-0 font-medium ${
+   349→                      t.tag.type === 'consumable'
+   350→                        ? 'bg-orange-100 text-orange-700 border-orange-200'
+   351→                        : 'bg-mersadent-accent/10 text-mersadent-accent border-mersadent-accent/20'
+   352→                    }`}
+   353→                  >
+   354→                    {t.tag.name}
+   355→                  </Badge>
+   356→                ))}
+   357→              </div>
+   358→            )}
+   359→          </div>
+   360→
+   361→          {/* Info */}
+   362→          <div className="flex-1 flex flex-col gap-1 min-h-0">
+   363→            <span className="text-[10px] text-gray-400 font-medium">{product.brand.name}</span>
+   364→            <h3 className="text-xs font-semibold text-mersadent-dark leading-5 line-clamp-2">
+   365→              {product.name}
+   366→            </h3>
+   367→          </div>
+   368→
+   369→          {/* Price & availability */}
+   370→          <div className="flex flex-col gap-1 pt-1.5 border-t border-gray-100">
+   371→            {product.priceType === 'call' || product.price === null ? (
+   372→              <Badge className="w-fit bg-mersadent-accent/10 text-mersadent-accent border-mersadent-accent/20 text-xs font-medium">
+   373→                تماس بگیرید
+   374→              </Badge>
+   375→            ) : hasDiscount && discountedPrice !== null ? (
+   376→              <div className="flex flex-col gap-0.5">
+   377→                <span className="text-[11px] text-gray-400 line-through">
+   378→                  {formatPrice(product.price)}
+   379→                </span>
+   380→                <span className="text-sm font-bold text-red-600">
+   381→                  {formatPrice(discountedPrice)}
+   382→                </span>
+   383→              </div>
+   384→            ) : (
+   385→              <span className="text-sm font-bold text-mersadent-dark">
+   386→                {formatPrice(product.price)}
+   387→              </span>
+   388→            )}
+   389→            <span className={`text-[11px] px-2 py-0.5 rounded-full w-fit ${av.color}`}>
+   390→              {av.text}
+   391→            </span>
+   392→          </div>
+   393→        </CardContent>
+   394→      </Card>
+   395→    </motion.div>
+   396→  );
+   397→}
+   398→
+   399→// ============================================================
+   400→// HEADER
+   401→// ============================================================
+   402→function Header({
+   403→  onNavigate,
+   404→  onSearch,
+   405→  categories,
+   406→  user,
+   407→  cartCount,
+   408→  onAuthRequired,
+   409→  onLogout,
+   410→  onOpenCart,
+   411→}: {
+   412→  onNavigate: (view: PageView) => void;
+   413→  onSearch: (query: string) => void;
+   414→  categories: Category[];
+   415→  user: UserData | null;
+   416→  cartCount: number;
+   417→  onAuthRequired: () => void;
+   418→  onLogout: () => void;
+   419→  onOpenCart: () => void;
+   420→}) {
+   421→  const [mobileOpen, setMobileOpen] = useState(false);
+   422→  const [mobileCatOpen, setMobileCatOpen] = useState(false);
+   423→  const [catMenuOpen, setCatMenuOpen] = useState(false);
+   424→  const [activeCat, setActiveCat] = useState<Category | null>(null);
+   425→  const catTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+   426→  const [searchQuery, setSearchQuery] = useState('');
+   427→  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+   428→  const [searchOpen, setSearchOpen] = useState(false);
+   429→  const debounced = useDebounce(searchQuery, 300);
+   430→  const searchRef = useRef<HTMLDivElement>(null);
+   431→  const inputRef = useRef<HTMLInputElement>(null);
+   432→  const megaMenuRef = useRef<HTMLDivElement>(null);
+   433→
+   434→  useEffect(() => {
+   435→    if (debounced.length < 2) {
+   436→      queueMicrotask(() => {
+   437→        setSearchResults([]);
+   438→        setSearchOpen(false);
+   439→      });
+   440→      return;
+   441→    }
+   442→    fetch(`/api/search?q=${encodeURIComponent(debounced)}`)
+   443→      .then(r => r.json())
+   444→      .then(d => {
+   445→        setSearchResults(d.results || []);
+   446→        setSearchOpen(true);
+   447→      })
+   448→      .catch(() => {});
+   449→  }, [debounced]);
+   450→
+   451→  useEffect(() => {
+   452→    const handler = (e: MouseEvent) => {
+   453→      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+   454→        setSearchOpen(false);
+   455→      }
+   456→    };
+   457→    document.addEventListener('mousedown', handler);
+   458→    return () => document.removeEventListener('mousedown', handler);
+   459→  }, []);
+   460→
+   461→  const handleSearchSelect = (r: SearchResult) => {
+   462→    setSearchOpen(false);
+   463→    setSearchQuery('');
+   464→    onNavigate({ type: 'product', productId: r.id });
+   465→  };
+   466→
+   467→  const handleSearchSubmit = (e: React.FormEvent) => {
+   468→    e.preventDefault();
+   469→    if (searchQuery.trim()) {
+   470→      setSearchOpen(false);
+   471→      onSearch(searchQuery.trim());
+   472→    }
+   473→  };
+   474→
+   475→  const navItems = [
+   476→    { label: 'مقالات آموزشی', action: () => { setMobileOpen(false); onNavigate({ type: 'blog' }); } },
+   477→    { label: 'برندها', action: () => { setMobileOpen(false); onNavigate({ type: 'brand', brandId: 0, brandName: 'all' }); } },
+   478→    { label: 'درباره ما', action: () => { setMobileOpen(false); onNavigate({ type: 'about' }); } },
+   479→  ];
+   480→
+   481→  // Mega menu hover handlers with delay
+   482→  const handleCatEnter = (cat: Category | null) => {
+   483→    if (catTimeoutRef.current) clearTimeout(catTimeoutRef.current);
+   484→    setActiveCat(cat);
+   485→  };
+   486→  const handleCatLeave = () => {
+   487→    catTimeoutRef.current = setTimeout(() => {
+   488→      setActiveCat(null);
+   489→      setCatMenuOpen(false);
+   490→    }, 200);
+   491→  };
+   492→
+   493→  return (
+   494→    <header className="sticky top-0 z-50 bg-white border-b border-gray-200/80 shadow-sm">
+   495→      <div className="max-w-7xl mx-auto px-4 sm:px-6">
+   496→        <div className="flex items-center justify-between h-14 gap-4">
+   497→          {/* Logo + Brand Name */}
+   498→          <button
+   499→            onClick={() => onNavigate({ type: 'home' })}
+   500→            className="flex-shrink-0 flex items-center gap-2.5 cursor-pointer group"
+   501→          >
+   502→            <img src="/logo.png" alt="MersaDent" className="h-8 sm:h-9 w-auto object-contain" />
+   503→            <div className="flex flex-col leading-none">
+   504→              <span className="text-xl sm:text-2xl font-extrabold tracking-tight text-mersadent-dark group-hover:text-mersadent-accent transition-colors" style={{ fontFamily: "'Geist Mono', monospace" }}>MersaDent</span>
+   505→              <span className="text-[11px] sm:text-xs font-bold text-mersadent-accent/70 mt-0.5">مرصادنت</span>
+   506→            </div>
+   507→          </button>
+   508→
+   509→          {/* Desktop Nav with Mega Menu */}
+   510→          <nav className="hidden md:flex items-center gap-1">
+   511→            {/* Categories Mega Menu */}
+   512→            <div
+   513→              ref={megaMenuRef}
+   514→              className="relative"
+   515→              onMouseEnter={() => { setCatMenuOpen(true); if (catTimeoutRef.current) clearTimeout(catTimeoutRef.current); }}
+   516→              onMouseLeave={handleCatLeave}
+   517→            >
+   518→              <button
+   519→                className={`flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-lg transition-colors ${catMenuOpen ? 'text-mersadent-accent bg-mersadent-accent/5' : 'text-gray-600 hover:text-mersadent-accent'}`}
+   520→              >
+   521→                دسته‌بندی‌ها
+   522→                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${catMenuOpen ? 'rotate-180' : ''}`} />
+   523→              </button>
+   524→
+   525→              {/* Mega Menu Dropdown */}
+   526→              <AnimatePresence>
+   527→                {catMenuOpen && (
+   528→                  <motion.div
+   529→                    initial={{ opacity: 0, y: 8 }}
+   530→                    animate={{ opacity: 1, y: 0 }}
+   531→                    exit={{ opacity: 0, y: 8 }}
+   532→                    transition={{ duration: 0.15 }}
+   533→                    className="absolute top-full mt-2 right-0 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden z-50"
+   534→                    style={{ minWidth: activeCat?.children?.length ? '720px' : '220px', maxWidth: 'min(90vw, 860px)' }}
+   535→                    onMouseEnter={() => { if (catTimeoutRef.current) clearTimeout(catTimeoutRef.current); }}
+   536→                    onMouseLeave={handleCatLeave}
+   537→                  >
+   538→                    <div className="flex">
+   539→                      {/* Parent categories list */}
+   540→                      <div className="w-52 bg-mersadent-bg/50 py-2 border-l border-gray-100">
+   541→                        {categories.map((cat) => (
+   542→                          <button
+   543→                            key={cat.id}
+   544→                            onMouseEnter={() => handleCatEnter(cat)}
+   545→                            onClick={() => { onNavigate({ type: 'category', categoryId: cat.id, slug: cat.slug }); setCatMenuOpen(false); }}
+   546→                            className={`w-full flex items-center justify-between px-4 py-2.5 text-right text-sm transition-colors ${activeCat?.id === cat.id ? 'bg-white text-mersadent-accent font-semibold shadow-sm' : 'text-gray-700 hover:bg-white hover:text-mersadent-dark'}`}
+   547→                          >
+   548→                            <span>{cat.name}</span>
+   549→                            {cat.children?.length ? (
+   550→                              <ChevronLeft className="w-3.5 h-3.5 opacity-40" />
+   551→                            ) : null}
+   552→                          </button>
+   553→                        ))}
+   554→                        <div className="border-t border-gray-200 mt-1 pt-1">
+   555→                          <button
+   556→                            onClick={() => { onNavigate({ type: 'category', categoryId: 0, slug: 'all' }); setCatMenuOpen(false); }}
+   557→                            className="w-full flex items-center justify-between px-4 py-2.5 text-right text-sm text-mersadent-accent hover:bg-white transition-colors font-medium"
+   558→                          >
+   559→                            <span>مشاهده همه دسته‌بندی‌ها</span>
+   560→                            <ChevronLeft className="w-3.5 h-3.5" />
+   561→                          </button>
+   562→                        </div>
+   563→                      </div>
+   564→
+   565→                      {/* Subcategories panel - each sub-category is a row with grandchildren laid out horizontally */}
+   566→                      {activeCat?.children?.length ? (
+   567→                        <div className="flex-1 min-w-[460px] flex flex-col">
+   568→                          <div className="px-5 pt-4 pb-2 border-b border-gray-100 flex items-center justify-between">
+   569→                            <button
+   570→                              onClick={() => { onNavigate({ type: 'category', categoryId: activeCat.id, slug: activeCat.slug }); setCatMenuOpen(false); }}
+   571→                              className="flex items-center gap-2 text-sm font-bold text-mersadent-dark hover:text-mersadent-accent transition-colors"
+   572→                            >
+   573→                              {activeCat.name}
+   574→                              <span className="text-xs font-normal text-gray-400">
+   575→                                ({(activeCat.productCount || 0) + (activeCat.children?.reduce((sum, c) => sum + (c.productCount || 0), 0) || 0)} محصول)
+   576→                              </span>
+   577→                            </button>
+   578→                            <button
+   579→                              onClick={() => { onNavigate({ type: 'category', categoryId: activeCat.id, slug: activeCat.slug }); setCatMenuOpen(false); }}
+   580→                              className="text-[11px] text-mersadent-accent hover:underline"
+   581→                            >
+   582→                              مشاهده همه ←
+   583→                            </button>
+   584→                          </div>
+   585→                          <div className="overflow-y-auto max-h-[70vh] py-2">
+   586→                            {activeCat.children.map((child) => (
+   587→                              <div key={child.id} className="px-5 py-2.5 border-b border-gray-50 last:border-0">
+   588→                                <div className="flex items-start gap-3 flex-wrap">
+   589→                                  {/* Sub-category title (the "row" label) */}
+   590→                                  <button
+   591→                                    onClick={() => { onNavigate({ type: 'category', categoryId: child.id, slug: child.slug, parentName: activeCat.name, parentSlug: activeCat.slug }); setCatMenuOpen(false); }}
+   592→                                    className="flex-shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-sm font-semibold text-mersadent-dark hover:bg-mersadent-accent/10 hover:text-mersadent-accent transition-colors"
+   593→                                  >
+   594→                                    <span>{child.name}</span>
+   595→                                    {child.productCount ? (
+   596→                                      <span className="text-[10px] font-normal text-gray-400">({child.productCount})</span>
+   597→                                    ) : null}
+   598→                                  </button>
+   599→                                  {/* Grandchildren laid out horizontally next to the sub-category title */}
+   600→                                  {child.children && child.children.length > 0 && (
+   601→                                    <div className="flex flex-wrap items-center gap-x-1 gap-y-1.5 flex-1 min-w-0">
+   602→                                      {child.children.map((grandchild) => (
+   603→                                        <button
+   604→                                          key={grandchild.id}
+   605→                                          onClick={() => { onNavigate({ type: 'category', categoryId: grandchild.id, slug: grandchild.slug, parentName: child.name, parentSlug: child.slug }); setCatMenuOpen(false); }}
+   606→                                          className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs text-gray-500 hover:bg-mersadent-accent/5 hover:text-mersadent-accent transition-colors whitespace-nowrap"
+   607→                                        >
+   608→                                          <span>{grandchild.name}</span>
+   609→                                          {grandchild.productCount ? (
+   610→                                            <span className="text-[9px] text-gray-300">({grandchild.productCount})</span>
+   611→                                          ) : null}
+   612→                                        </button>
+   613→                                      ))}
+   614→                                    </div>
+   615→                                  )}
+   616→                                </div>
+   617→                              </div>
+   618→                            ))}
+   619→                          </div>
+   620→                        </div>
+   621→                      ) : activeCat ? (
+   622→                        <div className="flex-1 p-4 min-w-[260px] flex items-center justify-center">
+   623→                          <button
+   624→                            onClick={() => { onNavigate({ type: 'category', categoryId: activeCat.id, slug: activeCat.slug }); setCatMenuOpen(false); }}
+   625→                            className="flex flex-col items-center gap-3 p-6 rounded-xl bg-mersadent-bg/50 hover:bg-mersadent-accent/5 transition-colors"
+   626→                          >
+   627→                            <Package className="w-8 h-8 text-mersadent-accent/40" />
+   628→                            <span className="text-sm font-medium text-mersadent-dark">مشاهده {activeCat.name}</span>
+   629→                            <span className="text-xs text-gray-400">{(activeCat.productCount || 0) + (activeCat.children?.reduce((sum, c) => sum + (c.productCount || 0), 0) || 0)} محصول</span>
+   630→                          </button>
+   631→                        </div>
+   632→                      ) : (
+   633→                        <div className="flex-1 p-4 min-w-[260px] flex items-center justify-center">
+   634→                          <p className="text-sm text-gray-400">یکی از دسته‌بندی‌ها را انتخاب کنید</p>
+   635→                        </div>
+   636→                      )}
+   637→                    </div>
+   638→                  </motion.div>
+   639→                )}
+   640→              </AnimatePresence>
+   641→            </div>
+   642→
+   643→            {/* Other nav items */}
+   644→            {navItems.map((item) => (
+   645→              <button
+   646→                key={item.label}
+   647→                onClick={item.action}
+   648→                className="text-sm font-medium text-gray-600 hover:text-mersadent-accent transition-colors px-3 py-2"
+   649→              >
+   650→                {item.label}
+   651→              </button>
+   652→            ))}
+   653→          </nav>
+   654→
+   655→          {/* Search */}
+   656→          <div ref={searchRef} className="relative flex-1 max-w-xs sm:max-w-sm">
+   657→            <form onSubmit={handleSearchSubmit}>
+   658→              <div className="relative">
+   659→                <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+   660→                <Input
+   661→                  ref={inputRef}
+   662→                  value={searchQuery}
+   663→                  onChange={(e) => setSearchQuery(e.target.value)}
+   664→                  placeholder="جستجوی محصول..."
+   665→                  className="pr-9 pl-4 h-10 text-sm bg-gray-50 border-gray-200 focus:bg-white focus:border-mersadent-accent rounded-xl"
+   666→                  onFocus={() => { if (searchResults.length > 0) setSearchOpen(true); }}
+   667→                />
+   668→              </div>
+   669→            </form>
+   670→
+   671→            {/* Autocomplete dropdown */}
+   672→            <AnimatePresence>
+   673→              {searchOpen && searchResults.length > 0 && (
+   674→                <motion.div
+   675→                  initial={{ opacity: 0, y: -4 }}
+   676→                  animate={{ opacity: 1, y: 0 }}
+   677→                  exit={{ opacity: 0, y: -4 }}
+   678→                  className="absolute top-full mt-1 w-full bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden z-50 max-h-80 overflow-y-auto"
+   679→                >
+   680→                  {searchResults.map((r) => (
+   681→                    <button
+   682→                      key={r.id}
+   683→                      onClick={() => handleSearchSelect(r)}
+   684→                      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-mersadent-bg transition-colors text-right"
+   685→                    >
+   686→                      <div className="flex-1 min-w-0">
+   687→                        <p className="text-sm font-medium text-mersadent-dark truncate">{r.name}</p>
+   688→                        <p className="text-xs text-gray-400">{r.brand} • {r.category}</p>
+   689→                      </div>
+   690→                      {r.price !== null ? (
+   691→                        <span className="text-xs font-medium text-mersadent-accent whitespace-nowrap">
+   692→                          {new Intl.NumberFormat('fa-IR').format(r.price)} تومان
+   693→                        </span>
+   694→                      ) : (
+   695→                        <Badge className="bg-mersadent-accent/10 text-mersadent-accent border-mersadent-accent/20 text-[10px]">
+   696→                          استعلام
+   697→                        </Badge>
+   698→                      )}
+   699→                    </button>
+   700→                  ))}
+   701→                </motion.div>
+   702→              )}
+   703→            </AnimatePresence>
+   704→          </div>
+   705→
+   706→          {/* Header action buttons */}
+   707→          <div className="flex items-center gap-1">
+   708→            {/* Cart button */}
+   709→            <Button variant="ghost" size="icon" onClick={onOpenCart} className="relative text-mersadent-dark hover:text-mersadent-accent">
+   710→              <ShoppingBag className="w-5 h-5" />
+   711→              {cartCount > 0 && (
+   712→                <span className="absolute -top-0.5 -left-0.5 w-4.5 h-4.5 min-w-[18px] bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+   713→                  {new Intl.NumberFormat('fa-IR').format(cartCount)}
+   714→                </span>
+   715→              )}
+   716→            </Button>
+   717→
+   718→            {/* User button */}
+   719→            {user ? (
+   720→              <DropdownMenu>
+   721→                <DropdownMenuTrigger asChild>
+   722→                  <Button variant="ghost" size="icon" className="text-mersadent-dark hover:text-mersadent-accent">
+   723→                    <User className="w-5 h-5" />
+   724→                  </Button>
+   725→                </DropdownMenuTrigger>
+   726→                <DropdownMenuContent align="end" className="w-44">
+   727→                  <DropdownMenuLabel className="text-right">
+   728→                    <div className="font-semibold text-sm">{user.name || 'کاربر'}</div>
+   729→                    <div className="text-[11px] text-gray-400 font-normal" dir="ltr">{user.phone || '—'}</div>
+   730→                  </DropdownMenuLabel>
+   731→                  <DropdownMenuSeparator />
+   732→                  <DropdownMenuItem onClick={() => onNavigate({ type: 'user' })} className="cursor-pointer text-sm text-right">
+   733→                    پروفایل من
+   734→                  </DropdownMenuItem>
+   735→                  <DropdownMenuItem onClick={() => onNavigate({ type: 'user' })} className="cursor-pointer text-sm text-right">
+   736→                    سفارش‌های من
+   737→                  </DropdownMenuItem>
+   738→                  <DropdownMenuSeparator />
+   739→                  <DropdownMenuItem onClick={onLogout} className="cursor-pointer text-sm text-red-500 text-right focus:text-red-500">
+   740→                    خروج
+   741→                  </DropdownMenuItem>
+   742→                </DropdownMenuContent>
+   743→              </DropdownMenu>
+   744→            ) : (
+   745→              <Button variant="ghost" size="icon" onClick={onAuthRequired} className="text-mersadent-dark hover:text-mersadent-accent">
+   746→                <LogIn className="w-5 h-5" />
+   747→              </Button>
+   748→            )}
+   749→
+   750→            {/* Mobile menu */}
+   751→            <div className="md:hidden">
+   752→            <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+   753→              <SheetTrigger asChild>
+   754→                <Button variant="ghost" size="icon" className="text-mersadent-dark">
+   755→                  <Menu className="w-5 h-5" />
+   756→                </Button>
+   757→              </SheetTrigger>
+   758→              <SheetContent side="right" className="w-72 p-0">
+   759→                <SheetTitle className="sr-only">منو</SheetTitle>
+   760→                <div className="flex flex-col h-full">
+   761→                  <div className="p-4 border-b border-gray-100 flex items-center gap-3">
+   762→                    <img src="/logo.png" alt="MersaDent" className="h-8 w-auto object-contain" />
+   763→                  </div>
+   764→                  <div className="flex-1 py-2">
+   765→                    {/* Mobile categories */}
+   766→                    <div className="border-b border-gray-100">
+   767→                      <button
+   768→                        onClick={() => { setMobileCatOpen(!mobileCatOpen); }}
+   769→                        className="w-full text-right px-6 py-3 text-sm font-medium text-gray-700 hover:bg-mersadent-bg hover:text-mersadent-accent transition-colors flex items-center justify-between"
+   770→                      >
+   771→                        <span>دسته‌بندی‌ها</span>
+   772→                        <ChevronDown className={`w-4 h-4 transition-transform ${mobileCatOpen ? 'rotate-180' : ''}`} />
+   773→                      </button>
+   774→                      {mobileCatOpen && categories.map((cat) => (
+   775→                        <div key={cat.id}>
+   776→                          <button
+   777→                            onClick={() => { onNavigate({ type: 'category', categoryId: cat.id, slug: cat.slug }); setMobileOpen(false); setMobileCatOpen(false); }}
+   778→                            className="w-full text-right px-10 py-2.5 text-sm text-gray-600 hover:bg-mersadent-bg hover:text-mersadent-accent transition-colors"
+   779→                          >
+   780→                            {cat.name}
+   781→                          </button>
+   782→                          {cat.children.map((child) => (
+   783→                            <div key={child.id}>
+   784→                              <button
+   785→                                onClick={() => { onNavigate({ type: 'category', categoryId: child.id, slug: child.slug, parentName: cat.name, parentSlug: cat.slug }); setMobileOpen(false); setMobileCatOpen(false); }}
+   786→                                className="w-full text-right px-14 py-2 text-xs text-gray-500 hover:bg-mersadent-bg hover:text-mersadent-accent transition-colors"
+   787→                              >
+   788→                                {child.name}
+   789→                              </button>
+   790→                              {child.children && child.children.length > 0 && child.children.map((grandchild) => (
+   791→                                <button
+   792→                                  key={grandchild.id}
+   793→                                  onClick={() => { onNavigate({ type: 'category', categoryId: grandchild.id, slug: grandchild.slug, parentName: child.name, parentSlug: child.slug }); setMobileOpen(false); setMobileCatOpen(false); }}
+   794→                                  className="w-full text-right px-18 py-1.5 text-[11px] text-gray-400 hover:bg-mersadent-bg hover:text-mersadent-accent transition-colors"
+   795→                                >
+   796→                                  {grandchild.name}
+   797→                                </button>
+   798→                              ))}
+   799→                            </div>
+   800→                          ))}
+   801→                        </div>
+   802→                      ))}
+   803→                    </div>
+   804→                    {navItems.map((item) => (
+   805→                      <button
+   806→                        key={item.label}
+   807→                        onClick={item.action}
+   808→                        className="w-full text-right px-6 py-3 text-sm font-medium text-gray-700 hover:bg-mersadent-bg hover:text-mersadent-accent transition-colors"
+   809→                      >
+   810→                        {item.label}
+   811→                      </button>
+   812→                    ))}
+   813→                  </div>
+   814→                  <div className="p-4 border-t border-gray-100 bg-mersadent-bg">
+   815→                    <p className="text-xs text-gray-500 text-center">تمامی حقوق محفوظ است © MersaDent</p>
+   816→                  </div>
+   817→                </div>
+   818→              </SheetContent>
+   819→            </Sheet>
+   820→          </div>
+   821→          </div>
+   822→        </div>
+   823→      </div>
+   824→    </header>
+   825→  );
+   826→}
+   827→
+   828→// ============================================================
+   829→// HERO SLIDER
+   830→// ============================================================
+   831→const heroSlides = [
+   832→  {
+   833→    image: '/hero-slide-1.png',
+   834→    title: 'یونیت دندانپزشکی',
+   835→    subtitle: 'بهترین برندهای یونیت با گارانتی اصالت و قیمت مناسب',
+   836→    objectPosition: 'center',
+   837→  },
+   838→  {
+   839→    image: '/hero-slide-2.png',
+   840→    title: 'تجهیزات دیجیتال',
+   841→    subtitle: 'اسکنر، سنسور و تجهیزات دیجیتال دندانپزشکی',
+   842→    objectPosition: 'center',
+   843→  },
+   844→  {
+   845→    image: '/hero-slide-3.png',
+   846→    title: 'سرویس و تعمیرات',
+   847→    subtitle: 'تعمیر تخصصی تمامی تجهیزات دندانپزشکی توسط تیم متخصص',
+   848→    objectPosition: 'center',
+   849→  },
+   850→];
+   851→
+   852→function HeroSlider({ onNavigate }: { onNavigate: (view: PageView) => void }) {
+   853→  const [current, setCurrent] = useState(0);
+   854→  const [isTransitioning, setIsTransitioning] = useState(false);
+   855→  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+   856→  const touchStartX = useRef(0);
+   857→  const currentRef = useRef(0);
+   858→
+   859→  const goTo = useCallback((index: number) => {
+   860→    if (isTransitioning) return;
+   861→    setIsTransitioning(true);
+   862→    setCurrent(index);
+   863→    currentRef.current = index;
+   864→    setTimeout(() => setIsTransitioning(false), 700);
+   865→  }, [isTransitioning]);
+   866→
+   867→  const next = useCallback(() => goTo((current + 1) % heroSlides.length), [current, goTo]);
+   868→  const prev = useCallback(() => goTo((current - 1 + heroSlides.length) % heroSlides.length), [current, goTo]);
+   869→
+   870→  // Auto-play
+   871→  useEffect(() => {
+   872→    intervalRef.current = setInterval(() => {
+   873→      goTo((currentRef.current + 1) % heroSlides.length);
+   874→    }, 6000);
+   875→    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+   876→  }, [goTo, heroSlides.length]);
+   877→
+   878→  // Pause on hover
+   879→  const pause = () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+   880→  const resume = () => {
+   881→    intervalRef.current = setInterval(() => {
+   882→      goTo((currentRef.current + 1) % heroSlides.length);
+   883→    }, 6000);
+   884→  };
+   885→
+   886→  // Touch handlers for swipe
+   887→  const onTouchStart = (e: React.TouchEvent) => { touchStartX.current = e.touches[0].clientX; };
+   888→  const onTouchEnd = (e: React.TouchEvent) => {
+   889→    const diff = touchStartX.current - e.changedTouches[0].clientX;
+   890→    if (Math.abs(diff) > 50) { if (diff > 0) next(); else prev(); }
+   891→  };
+   892→
+   893→  const slide = heroSlides[current];
+   894→
+   895→  return (
+   896→    <section
+   897→      className="relative w-full h-[50vw] sm:h-[42vw] md:h-[36vw] lg:h-[520px] xl:h-[560px] min-h-[280px] max-h-[600px] overflow-hidden select-none"
+   898→      onMouseEnter={pause}
+   899→      onMouseLeave={resume}
+   900→      onTouchStart={onTouchStart}
+   901→      onTouchEnd={onTouchEnd}
+   902→    >
+   903→      {/* Slides */}
+   904→      {heroSlides.map((s, i) => (
+   905→        <div
+   906→          key={i}
+   907→          className="absolute inset-0 transition-opacity duration-700 ease-in-out"
+   908→          style={{ opacity: i === current ? 1 : 0, zIndex: i === current ? 1 : 0 }}
+   909→        >
+   910→          <img
+   911→            src={s.image}
+   912→            alt={s.title}
+   913→            className="w-full h-full object-cover"
+   914→            style={{ objectPosition: s.objectPosition }}
+   915→            loading={i === 0 ? 'eager' : 'lazy'}
+   916→          />
+   917→        </div>
+   918→      ))}
+   919→
+   920→      {/* Dark gradient overlay */}
+   921→      <div className="absolute inset-0 bg-gradient-to-l from-black/70 via-black/50 to-transparent z-10" />
+   922→
+   923→      {/* Content */}
+   924→      <div className="absolute inset-0 z-20 flex items-center">
+   925→        <div className="max-w-7xl mx-auto w-full px-5 sm:px-8 lg:px-12">
+   926→          <AnimatePresence mode="wait">
+   927→            <motion.div
+   928→              key={current}
+   929→              initial={{ opacity: 0, y: 20 }}
+   930→              animate={{ opacity: 1, y: 0 }}
+   931→              exit={{ opacity: 0, y: -15 }}
+   932→              transition={{ duration: 0.5, ease: 'easeOut' }}
+   933→              className="max-w-xl"
+   934→            >
+   935→              <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-extrabold text-white leading-tight mb-3">
+   936→                {slide.title}
+   937→              </h1>
+   938→              <p className="text-sm sm:text-base text-white/80 leading-7 mb-6 max-w-md">
+   939→                {slide.subtitle}
+   940→              </p>
+   941→              <div className="flex flex-wrap gap-3">
+   942→                <Button
+   943→                  onClick={() => onNavigate({ type: 'category', categoryId: 0, slug: 'all' })}
+   944→                  className="bg-mersadent-accent hover:bg-mersadent-accent/90 text-white rounded-xl px-5 sm:px-6 h-10 sm:h-11 font-semibold text-sm sm:text-base"
+   945→                >
+   946→                  مشاهده تجهیزات
+   947→                  <ChevronLeft className="w-4 h-4 mr-2" />
+   948→                </Button>
+   949→                <Button
+   950→                  variant="outline"
+   951→                  onClick={() => onNavigate({ type: 'about' })}
+   952→                  className="bg-white/10 border-white/40 text-white hover:bg-white/20 hover:border-white/70 rounded-xl px-5 sm:px-6 h-10 sm:h-11 font-semibold text-sm sm:text-base backdrop-blur-sm"
+   953→                >
+   954→                  درباره ما
+   955→                </Button>
+   956→              </div>
+   957→            </motion.div>
+   958→          </AnimatePresence>
+   959→        </div>
+   960→      </div>
+   961→
+   962→      {/* Arrow buttons */}
+   963→      <button
+   964→        onClick={prev}
+   965→        className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 z-30 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/15 hover:bg-white/25 backdrop-blur-sm border border-white/20 text-white flex items-center justify-center transition-colors"
+   966→        aria-label="اسلاید قبلی"
+   967→      >
+   968→        <ChevronRight className="w-5 h-5" />
+   969→      </button>
+   970→      <button
+   971→        onClick={next}
+   972→        className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 z-30 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/15 hover:bg-white/25 backdrop-blur-sm border border-white/20 text-white flex items-center justify-center transition-colors"
+   973→        aria-label="اسلاید بعدی"
+   974→      >
+   975→        <ChevronLeft className="w-5 h-5" />
+   976→      </button>
+   977→
+   978→      {/* Dot indicators */}
+   979→      <div className="absolute bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2">
+   980→        {heroSlides.map((_, i) => (
+   981→          <button
+   982→            key={i}
+   983→            onClick={() => goTo(i)}
+   984→            className={`rounded-full transition-all duration-300 ${
+   985→              i === current
+   986→                ? 'w-7 h-2.5 bg-mersadent-accent'
+   987→                : 'w-2.5 h-2.5 bg-white/50 hover:bg-white/80'
+   988→            }`}
+   989→            aria-label={`اسلاید ${i + 1}`}
+   990→          />
+   991→        ))}
+   992→      </div>
+   993→    </section>
+   994→  );
+   995→}
+   996→
+   997→// ============================================================
+   998→// HOMEPAGE
+   999→// ============================================================
+  1000→function HomePage({ onNavigate, user, onAuthRequired, onAddToCart }: { onNavigate: (view: PageView) => void; user: UserData | null; onAuthRequired: () => void; onAddToCart: (productId: number) => void }) {
+  1001→  const [categories, setCategories] = useState<Category[]>([]);
+  1002→  const [featured, setFeatured] = useState<Product[]>([]);
+  1003→  const [discounted, setDiscounted] = useState<Product[]>([]);
+  1004→  const [brands, setBrands] = useState<Brand[]>([]);
+  1005→  const [allBrandsList, setAllBrandsList] = useState<Brand[]>([]);
+  1006→  const [totalBrandCount, setTotalBrandCount] = useState(0);
+  1007→  const [loading, setLoading] = useState(true);
+  1008→  const featuredRef = useRef<HTMLDivElement>(null);
+  1009→  const discountRef = useRef<HTMLDivElement>(null);
+  1010→  const marqueeClipRef = useRef<HTMLDivElement>(null);
+  1011→  const marqueeRafRef = useRef<number>(0);
+  1012→  const marqueePausedRef = useRef(false);
+  1013→  const marqueeLastTimeRef = useRef(0);
+  1014→
+  1015→  const { toggleCompare, isInCompare } = useCompare();
+  1016→
+  1017→  const scrollContainer = (ref: React.RefObject<HTMLDivElement | null>, direction: 'left' | 'right') => {
+  1018→    if (!ref.current) return;
+  1019→    const scrollAmount = 280;
+  1020→    ref.current.scrollBy({
+  1021→      left: direction === 'right' ? scrollAmount : -scrollAmount,
+  1022→      behavior: 'smooth',
+  1023→    });
+  1024→  };
+  1025→
+  1026→  useEffect(() => {
+  1027→    Promise.all([
+  1028→      fetch('/api/categories').then(r => r.json()).then(d => Array.isArray(d) ? d : []),
+  1029→      fetch('/api/featured').then(r => r.json()).then(d => Array.isArray(d) ? d : []),
+  1030→      fetch('/api/brands').then(r => r.json()).then(d => Array.isArray(d) ? d : []),
+  1031→      fetch('/api/brands?all=true').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []),
+  1032→      fetch('/api/products?discounted=true&limit=20').then(r => r.json()).then(d => d.products || []).catch(() => []),
+  1033→    ])
+  1034→      .then(([cats, feat, brs, allBrands, discProds]) => {
+  1035→        setCategories(cats);
+  1036→        setFeatured(feat);
+  1037→        setBrands(brs);
+  1038→        setAllBrandsList(Array.isArray(allBrands) ? allBrands : brs);
+  1039→        setTotalBrandCount(Array.isArray(allBrands) ? allBrands.length : brs.length);
+  1040→        setDiscounted(discProds);
+  1041→        setLoading(false);
+  1042→      })
+  1043→      .catch(() => setLoading(false));
+  1044→  }, []);
+  1045→
+  1046→  // Smooth marquee using native scrollLeft
+  1047→  useEffect(() => {
+  1048→    if (!brands.length || !marqueeClipRef.current) return;
+  1049→    const clipper = marqueeClipRef.current;
+  1050→    const track = clipper.firstElementChild as HTMLElement | null;
+  1051→    if (!track) return;
+  1052→
+  1053→    // Measure distance from brand 0 to its next copy
+  1054→    const card0 = track.children[0] as HTMLElement | null;
+  1055→    const card0Copy1 = track.children[brands.length] as HTMLElement | null;
+  1056→    if (!card0 || !card0Copy1) return;
+  1057→    const singleSetWidth = card0Copy1.getBoundingClientRect().left - card0.getBoundingClientRect().left;
+  1058→    if (singleSetWidth <= 0) return;
+  1059→
+  1060→    const SPEED = 50; // px per second
+  1061→    marqueeLastTimeRef.current = 0;
+  1062→
+  1063→    // Start scrolled left by one set so both sides have content
+  1064→    clipper.scrollLeft = singleSetWidth;
+  1065→
+  1066→    const step = (timestamp: number) => {
+  1067→      if (!marqueeLastTimeRef.current) marqueeLastTimeRef.current = timestamp;
+  1068→      const dt = (timestamp - marqueeLastTimeRef.current) / 1000;
+  1069→      marqueeLastTimeRef.current = timestamp;
+  1070→
+  1071→      if (!marqueePausedRef.current) {
+  1072→        clipper.scrollLeft += SPEED * dt;
+  1073→        if (clipper.scrollLeft >= singleSetWidth) {
+  1074→          clipper.scrollLeft -= singleSetWidth;
+  1075→        }
+  1076→      }
+  1077→
+  1078→      marqueeRafRef.current = requestAnimationFrame(step);
+  1079→    };
+  1080→
+  1081→    marqueeRafRef.current = requestAnimationFrame(step);
+  1082→    return () => cancelAnimationFrame(marqueeRafRef.current);
+  1083→  }, [brands]);
+  1084→
+  1085→  return (
+  1086→    <div className="flex flex-col gap-8 pb-8">
+  1087→      {/* ===== HERO SLIDER ===== */}
+  1088→      <HeroSlider onNavigate={onNavigate} />
+  1089→
+  1090→      {/* ===== MAIN CATEGORIES ===== */}
+  1091→      <section className="max-w-7xl mx-auto px-4 sm:px-6">
+  1092→        <div className="flex items-center justify-between mb-4">
+  1093→          <div>
+  1094→            <h2 className="text-base sm:text-lg font-bold text-mersadent-dark">دسته‌بندی محصولات</h2>
+  1095→          </div>
+  1096→          <Button
+  1097→            variant="ghost"
+  1098→            onClick={() => onNavigate({ type: 'category', categoryId: 0, slug: 'all' })}
+  1099→            className="text-mersadent-accent text-sm"
+  1100→          >
+  1101→            مشاهده همه
+  1102→            <ChevronLeft className="w-4 h-4 mr-1" />
+  1103→          </Button>
+  1104→        </div>
+  1105→
+  1106→        {loading ? (
+  1107→          <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-2.5">
+  1108→            {Array.from({ length: 7 }).map((_, i) => (
+  1109→              <Skeleton key={i} className="h-24 rounded-xl" />
+  1110→            ))}
+  1111→          </div>
+  1112→        ) : (
+  1113→          <motion.div
+  1114→            variants={staggerContainer}
+  1115→            initial="initial"
+  1116→            animate="animate"
+  1117→            className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-2.5"
+  1118→          >
+  1119→            {categories.map((cat) => (
+  1120→              <motion.button
+  1121→                key={cat.id}
+  1122→                variants={staggerItem}
+  1123→                whileHover={{ scale: 1.03 }}
+  1124→                whileTap={{ scale: 0.97 }}
+  1125→                onClick={() => onNavigate({
+  1126→                  type: 'category',
+  1127→                  categoryId: cat.id,
+  1128→                  slug: cat.slug,
+  1129→                })}
+  1130→                className="flex flex-col items-center gap-2 p-3 sm:p-4 bg-white rounded-xl border border-gray-100 hover:border-mersadent-accent/30 hover:shadow-md transition-all group"
+  1131→              >
+  1132→                <div className="p-2.5 rounded-xl bg-mersadent-bg group-hover:bg-mersadent-accent/10 text-mersadent-dark group-hover:text-mersadent-accent transition-colors">
+  1133→                  {getCategoryIcon(cat.slug)}
+  1134→                </div>
+  1135→                <div className="text-center">
+  1136→                  <span className="text-[11px] sm:text-xs font-semibold text-mersadent-dark block">{cat.name}</span>
+  1137→                  <span className="text-[9px] sm:text-[10px] text-gray-400 mt-0.5 block">{cat.children.length} زیردسته</span>
+  1138→                </div>
+  1139→              </motion.button>
+  1140→            ))}
+  1141→          </motion.div>
+  1142→        )}
+  1143→      </section>
+  1144→
+  1145→      {/* ===== FEATURED PRODUCTS ===== */}
+  1146→      {(featured || []).length > 0 && (
+  1147→        <section className="max-w-7xl mx-auto px-4 sm:px-6">
+  1148→          <div className="flex items-center justify-between mb-4">
+  1149→            <h2 className="text-base sm:text-lg font-bold text-mersadent-dark">محصولات ویژه</h2>
+  1150→          </div>
+  1151→          <div className="relative group">
+  1152→            {/* Scroll arrows - desktop only */}
+  1153→            {(featured || []).length > 4 && (
+  1154→              <>
+  1155→                <button
+  1156→                  onClick={() => scrollContainer(featuredRef, 'right')}
+  1157→                  className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-9 h-9 bg-white/90 hover:bg-white shadow-md rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hidden md:flex"
+  1158→                  aria-label="اسکرول به راست"
+  1159→                >
+  1160→                  <ChevronRight className="w-5 h-5 text-mersadent-dark" />
+  1161→                </button>
+  1162→                <button
+  1163→                  onClick={() => scrollContainer(featuredRef, 'left')}
+  1164→                  className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-9 h-9 bg-white/90 hover:bg-white shadow-md rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hidden md:flex"
+  1165→                  aria-label="اسکرول به چپ"
+  1166→                >
+  1167→                  <ChevronLeft className="w-5 h-5 text-mersadent-dark" />
+  1168→                </button>
+  1169→              </>
+  1170→            )}
+  1171→            <div
+  1172→              ref={featuredRef}
+  1173→              className="flex gap-3 overflow-x-auto scrollbar-hide pb-2 scroll-smooth [scroll-snap-type:x_mandatory] -mx-4 px-4 sm:mx-0 sm:px-0"
+  1174→            >
+  1175→              {featured.map((p) => (
+  1176→                <div key={p.id} className="flex-shrink-0 w-48 sm:w-56 [scroll-snap-align:start]">
+  1177→                  <ProductCard
+  1178→                    product={p}
+  1179→                    onClick={() => onNavigate({ type: 'product', productId: p.id })}
+  1180→                    user={user}
+  1181→                    onAuthRequired={onAuthRequired}
+  1182→                    onAddToCart={onAddToCart}
+  1183→                    onToggleCompare={() => toggleCompare(p)}
+  1184→                    isInCompare={isInCompare(p.id)}
+  1185→                  />
+  1186→                </div>
+  1187→              ))}
+  1188→            </div>
+  1189→          </div>
+  1190→        </section>
+  1191→      )}
+  1192→
+  1193→      {/* ===== DISCOUNTED PRODUCTS ===== */}
+  1194→      {(discounted || []).length > 0 && (
+  1195→        <section className="bg-gradient-to-r from-red-50 to-orange-50 py-6">
+  1196→          <div className="max-w-7xl mx-auto px-4 sm:px-6">
+  1197→            <div className="flex items-center justify-between mb-4">
+  1198→              <h2 className="text-base sm:text-lg font-bold text-mersadent-dark flex items-center gap-2">
+  1199→                🔥 محصولات تخفیف‌دار
+  1200→              </h2>
+  1201→              <Badge className="bg-red-500 text-white text-xs">{(discounted || []).length} محصول</Badge>
+  1202→            </div>
+  1203→            <div className="relative group">
+  1204→              {(discounted || []).length > 4 && (
+  1205→                <>
+  1206→                  <button
+  1207→                    onClick={() => scrollContainer(discountRef, 'right')}
+  1208→                    className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-9 h-9 bg-white/90 hover:bg-white shadow-md rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hidden md:flex"
+  1209→                    aria-label="اسکرول به راست"
+  1210→                  >
+  1211→                    <ChevronRight className="w-5 h-5 text-mersadent-dark" />
+  1212→                  </button>
+  1213→                  <button
+  1214→                    onClick={() => scrollContainer(discountRef, 'left')}
+  1215→                    className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-9 h-9 bg-white/90 hover:bg-white shadow-md rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hidden md:flex"
+  1216→                    aria-label="اسکرول به چپ"
+  1217→                  >
+  1218→                    <ChevronLeft className="w-5 h-5 text-mersadent-dark" />
+  1219→                  </button>
+  1220→                </>
+  1221→              )}
+  1222→              <div
+  1223→                ref={discountRef}
+  1224→                className="flex gap-3 overflow-x-auto scrollbar-hide pb-2 scroll-smooth [scroll-snap-type:x_mandatory] -mx-4 px-4 sm:mx-0 sm:px-0"
+  1225→              >
+  1226→                {discounted.map((p) => (
+  1227→                  <div key={p.id} className="flex-shrink-0 w-48 sm:w-56 [scroll-snap-align:start]">
+  1228→                    <ProductCard
+  1229→                      product={p}
+  1230→                      onClick={() => onNavigate({ type: 'product', productId: p.id })}
+  1231→                      user={user}
+  1232→                      onAuthRequired={onAuthRequired}
+  1233→                      onAddToCart={onAddToCart}
+  1234→                      onToggleCompare={() => toggleCompare(p)}
+  1235→                      isInCompare={isInCompare(p.id)}
+  1236→                    />
+  1237→                  </div>
+  1238→                ))}
+  1239→              </div>
+  1240→            </div>
+  1241→          </div>
+  1242→        </section>
+  1243→      )}
+  1244→
+  1245→      {/* ===== BRANDS MARQUEE ===== */}
+  1246→      <section className="py-2">
+  1247→        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-between mb-3">
+  1248→          <h2 className="text-base sm:text-lg font-bold text-mersadent-dark">برندها</h2>
+  1249→          <Button
+  1250→            variant="ghost"
+  1251→            onClick={() => onNavigate({ type: 'brand', brandId: 0, brandName: 'all' })}
+  1252→            className="text-mersadent-accent text-sm"
+  1253→          >
+  1254→            مشاهده همه ({totalBrandCount} برند)
+  1255→            <ChevronLeft className="w-3.5 h-3.5 mr-0.5" />
+  1256→          </Button>
+  1257→        </div>
+  1258→
+  1259→        {loading ? (
+  1260→          <div className="max-w-7xl mx-auto px-4 sm:px-6 flex gap-3 overflow-hidden">
+  1261→            {Array.from({ length: 10 }).map((_, i) => (
+  1262→              <Skeleton key={i} className="h-20 w-28 flex-shrink-0 rounded-xl" />
+  1263→            ))}
+  1264→          </div>
+  1265→        ) : (
+  1266→          <div
+  1267→            ref={marqueeClipRef}
+  1268→            dir="ltr"
+  1269→            className="relative overflow-hidden"
+  1270→            onMouseEnter={() => { marqueePausedRef.current = true; }}
+  1271→            onMouseLeave={() => { marqueePausedRef.current = false; }}
+  1272→          >
+  1273→            <div className="flex gap-3 w-fit">
+  1274→              {[0, 1, 2].map((copyIdx) => (
+  1275→                brands.map((b) => (
+  1276→                  <button
+  1277→                    key={`${copyIdx}-${b.id}`}
+  1278→                    onClick={() => onNavigate({ type: 'brand', brandId: b.id, brandName: b.name })}
+  1279→                    className="flex flex-col items-center justify-center gap-1.5 w-24 sm:w-28 h-20 flex-shrink-0 bg-white rounded-xl border border-gray-100 hover:border-mersadent-accent/30 hover:shadow-md transition-all group/card cursor-pointer"
+  1280→                  >
+  1281→                    {b.logo ? (
+  1282→                      <img src={b.logo} alt={b.name} className="w-7 h-7 object-contain" />
+  1283→                    ) : (
+  1284→                      <Package className="w-6 h-6 text-gray-300 group-hover/card:text-mersadent-accent transition-colors" />
+  1285→                    )}
+  1286→                    <span className="text-[10px] sm:text-xs font-semibold text-mersadent-dark truncate w-full text-center px-1">{b.name}</span>
+  1287→                  </button>
+  1288→                ))
+  1289→              ))}
+  1290→            </div>
+  1291→          </div>
+  1292→        )}
+  1293→      </section>
+  1294→
+  1295→      {/* ===== BLOG PREVIEW ===== */}
+  1296→      <BlogPreviewSection onNavigate={onNavigate} />
+  1297→
+  1298→      {/* ===== CTA ===== */}
+  1299→      <section className="bg-mersadent-dark text-white">
+  1300→        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 text-center">
+  1301→          <h2 className="text-base sm:text-lg font-bold mb-2">نیاز به مشاوره دارید؟</h2>
+  1302→          <p className="text-xs sm:text-sm text-gray-400 mb-4">
+  1303→            کارشناسان ما آماده راهنمایی شما هستند
+  1304→          </p>
+  1305→          <Button
+  1306→            asChild
+  1307→            className="bg-mersadent-accent hover:bg-mersadent-accent/90 text-white rounded-xl px-6 h-10 font-semibold text-sm"
+  1308→          >
+  1309→            <a href="tel:02112345678">
+  1310→              <Phone className="w-4 h-4 ml-1.5" />
+  1311→              تماس با ما
+  1312→            </a>
+  1313→          </Button>
+  1314→        </div>
+  1315→      </section>
+  1316→    </div>
+  1317→  );
+  1318→}
+  1319→
+  1320→// ============================================================
+  1321→// CATEGORY ALL PAGE (shows all categories with subcategories)
+  1322→// ============================================================
+  1323→function CategoryAllPage({ categories, onNavigate }: { categories: Category[]; onNavigate: (view: PageView) => void }) {
+  1324→  return (
+  1325→    <motion.div {...fadeIn} className="max-w-7xl mx-auto px-4 sm:px-6 pb-8">
+  1326→      <Breadcrumb className="mb-6">
+  1327→        <BreadcrumbList>
+  1328→          <BreadcrumbItem>
+  1329→            <BreadcrumbLink onClick={() => onNavigate({ type: 'home' })} className="cursor-pointer flex items-center gap-1 text-sm">
+  1330→              <Home className="w-3.5 h-3.5" />
+  1331→              خانه
+  1332→            </BreadcrumbLink>
+  1333→          </BreadcrumbItem>
+  1334→          <BreadcrumbSeparator />
+  1335→          <BreadcrumbItem>
+  1336→            <BreadcrumbPage>دسته‌بندی‌ها</BreadcrumbPage>
+  1337→          </BreadcrumbItem>
+  1338→        </BreadcrumbList>
+  1339→      </Breadcrumb>
+  1340→
+  1341→      <h1 className="text-xl sm:text-2xl font-bold text-mersadent-dark mb-8">همه دسته‌بندی‌ها</h1>
+  1342→
+  1343→      <div className="flex flex-col gap-6">
+  1344→        {categories.map((cat) => (
+  1345→          <div key={cat.id} className="bg-white rounded-2xl border border-gray-100 p-5 sm:p-6">
+  1346→            <div className="flex items-center gap-3 mb-4">
+  1347→              <div className="p-2.5 rounded-xl bg-mersadent-accent/10 text-mersadent-accent">
+  1348→                {getCategoryIcon(cat.slug)}
+  1349→              </div>
+  1350→              <div>
+  1351→                <h2 className="text-base sm:text-lg font-bold text-mersadent-dark">{cat.name}</h2>
+  1352→                <p className="text-xs text-gray-400">{cat.productCount} محصول</p>
+  1353→              </div>
+  1354→            </div>
+  1355→            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+  1356→              {cat.children.map((child) => (
+  1357→                <div key={child.id} className="flex flex-col">
+  1358→                  <button
+  1359→                    onClick={() => onNavigate({
+  1360→                      type: 'category',
+  1361→                      categoryId: child.id,
+  1362→                      slug: child.slug,
+  1363→                      parentName: cat.name,
+  1364→                      parentSlug: cat.slug,
+  1365→                    })}
+  1366→                    className="flex items-center justify-between px-3 py-2.5 rounded-lg bg-mersadent-bg hover:bg-mersadent-accent/10 transition-colors text-sm text-gray-600 hover:text-mersadent-accent group"
+  1367→                  >
+  1368→                    <span>{child.name}</span>
+  1369→                    <span className="flex items-center gap-1 text-xs text-gray-400">
+  1370→                      <ChevronLeft className="w-3.5 h-3.5 group-hover:text-mersadent-accent" />
+  1371→                      {child.productCount}
+  1372→                    </span>
+  1373→                  </button>
+  1374→                  {child.children && child.children.length > 0 && (
+  1375→                    <div className="flex flex-col gap-1 mt-1 mr-2">
+  1376→                      {child.children.map((grandchild) => (
+  1377→                        <button
+  1378→                          key={grandchild.id}
+  1379→                          onClick={() => onNavigate({
+  1380→                            type: 'category',
+  1381→                            categoryId: grandchild.id,
+  1382→                            slug: grandchild.slug,
+  1383→                            parentName: child.name,
+  1384→                            parentSlug: child.slug,
+  1385→                          })}
+  1386→                          className="flex items-center justify-between px-3 py-2 rounded-md bg-gray-50 hover:bg-mersadent-accent/10 transition-colors text-xs text-gray-500 hover:text-mersadent-accent group"
+  1387→                        >
+  1388→                          <span>{grandchild.name}</span>
+  1389→                          <span className="text-[10px] text-gray-400">{grandchild.productCount}</span>
+  1390→                        </button>
+  1391→                      ))}
+  1392→                    </div>
+  1393→                  )}
+  1394→                </div>
+  1395→              ))}
+  1396→            </div>
+  1397→          </div>
+  1398→        ))}
+  1399→      </div>
+  1400→    </motion.div>
+  1401→  );
+  1402→}
+  1403→
+  1404→// ============================================================
+  1405→// CATEGORY PRODUCTS PAGE
+  1406→// ============================================================
+  1407→function CategoryPage({
+  1408→  view,
+  1409→  onNavigate,
+  1410→  categories,
+  1411→  user,
+  1412→  onAuthRequired,
+  1413→  onAddToCart,
+  1414→}: {
+  1415→  view: Extract<PageView, { type: 'category' }>;
+  1416→  onNavigate: (view: PageView) => void;
+  1417→  categories: Category[];
+  1418→  user: UserData | null;
+  1419→  onAuthRequired: () => void;
+  1420→  onAddToCart: (productId: number) => void;
+  1421→}) {
+  1422→  const [products, setProducts] = useState<Product[]>([]);
+  1423→  const [total, setTotal] = useState(0);
+  1424→  const [page, setPage] = useState(1);
+  1425→  const [loading, setLoading] = useState(true);
+  1426→  const [brands, setBrands] = useState<Brand[]>([]);
+  1427→  const [selectedBrands, setSelectedBrands] = useState<number[]>([]);
+  1428→  const [priceRange, setPriceRange] = useState<[number, number]>([0, 100000000]);
+  1429→  const [sliderValue, setSliderValue] = useState<[number, number]>([0, 100000000]);
+  1430→  const [maxPrice, setMaxPrice] = useState(100000000);
+  1431→  const [availabilityFilter, setAvailabilityFilter] = useState<string>('');
+  1432→
+  1433→  const { toggleCompare, isInCompare } = useCompare();
+  1434→  const [sort, setSort] = useState('newest');
+  1435→  const [filterOpen, setFilterOpen] = useState(false);
+  1436→  const sliderTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  1437→
+  1438→  const PER_PAGE = 12;
+  1439→
+  1440→  const fetchProducts = useCallback(async () => {
+  1441→    if (view.categoryId === 0) return;
+  1442→    setLoading(true);
+  1443→    const params = new URLSearchParams({
+  1444→      categoryId: String(view.categoryId),
+  1445→      page: String(page),
+  1446→      limit: String(PER_PAGE),
+  1447→      sort,
+  1448→    });
+  1449→    if (selectedBrands.length > 0) params.set('brandId', selectedBrands.join(','));
+  1450→    if (priceRange[0] > 0) params.set('minPrice', String(priceRange[0]));
+  1451→    if (priceRange[1] < maxPrice) params.set('maxPrice', String(priceRange[1]));
+  1452→    if (availabilityFilter) params.set('availability', availabilityFilter);
+  1453→
+  1454→    try {
+  1455→      const res = await fetch(`/api/products?${params}`);
+  1456→      const data = await res.json();
+  1457→      setProducts(data.products || []);
+  1458→      setTotal(data.total || 0);
+  1459→    } catch {
+  1460→      setProducts([]);
+  1461→      setTotal(0);
+  1462→    }
+  1463→    setLoading(false);
+  1464→  }, [view.categoryId, page, selectedBrands, priceRange, availabilityFilter, sort, maxPrice]);
+  1465→
+  1466→  // Cleanup debounce timer on unmount
+  1467→  useEffect(() => {
+  1468→    return () => { if (sliderTimerRef.current) clearTimeout(sliderTimerRef.current); };
+  1469→  }, []);
+  1470→
+  1471→  useEffect(() => {
+  1472→    if (view.categoryId === 0) return;
+  1473→    // Fetch brands for this category
+  1474→    fetch(`/api/brands?categoryId=${view.categoryId}`)
+  1475→      .then(r => r.json())
+  1476→      .then((data: Brand[]) => {
+  1477→        setBrands(data);
+  1478→      })
+  1479→      .catch(() => {});
+  1480→  }, [view.categoryId]);
+  1481→
+  1482→  useEffect(() => {
+  1483→    if (view.categoryId === 0) return;
+  1484→    let cancelled = false;
+  1485→    (async () => {
+  1486→      try {
+  1487→        setLoading(true);
+  1488→        const params = new URLSearchParams({
+  1489→          categoryId: String(view.categoryId),
+  1490→          page: String(page),
+  1491→          limit: String(PER_PAGE),
+  1492→          sort,
+  1493→        });
+  1494→        if (selectedBrands.length > 0) params.set('brandId', selectedBrands.join(','));
+  1495→        if (priceRange[0] > 0) params.set('minPrice', String(priceRange[0]));
+  1496→        if (priceRange[1] < maxPrice) params.set('maxPrice', String(priceRange[1]));
+  1497→        if (availabilityFilter) params.set('availability', availabilityFilter);
+  1498→        const res = await fetch(`/api/products?${params}`);
+  1499→        const data = await res.json();
+  1500→        if (!cancelled) {
+  1501→          setProducts(data.products || []);
+  1502→          setTotal(data.total || 0);
+  1503→        }
+  1504→      } catch {
+  1505→        if (!cancelled) {
+  1506→          setProducts([]);
+  1507→          setTotal(0);
+  1508→        }
+  1509→      }
+  1510→      if (!cancelled) setLoading(false);
+  1511→    })();
+  1512→    return () => { cancelled = true; };
+  1513→  }, [view.categoryId, page, selectedBrands, priceRange, availabilityFilter, sort, maxPrice]);
+  1514→
+  1515→  // Find max price on first load
+  1516→  useEffect(() => {
+  1517→    if (view.categoryId === 0) return;
+  1518→    fetch(`/api/products?categoryId=${view.categoryId}&limit=1&sort=price-desc`)
+  1519→      .then(r => r.json())
+  1520→      .then(data => {
+  1521→        if (data.products?.[0]?.price) {
+  1522→          const mp = Math.ceil(data.products[0].price / 1000000) * 1000000;
+  1523→          setMaxPrice(mp);
+  1524→          setPriceRange([0, mp]);
+  1525→          setSliderValue([0, mp]);
+  1526→        }
+  1527→      })
+  1528→      .catch(() => {});
+  1529→  }, [view.categoryId]);
+  1530→
+  1531→  const handleSliderChange = (val: number[]) => {
+  1532→    const range = val as [number, number];
+  1533→    setSliderValue(range);
+  1534→    if (sliderTimerRef.current) clearTimeout(sliderTimerRef.current);
+  1535→    sliderTimerRef.current = setTimeout(() => {
+  1536→      setPriceRange(range);
+  1537→      setPage(1);
+  1538→    }, 400);
+  1539→  };
+  1540→
+  1541→  const clearFilters = () => {
+  1542→    setSelectedBrands([]);
+  1543→    setPriceRange([0, maxPrice]);
+  1544→    setSliderValue([0, maxPrice]);
+  1545→    setAvailabilityFilter('');
+  1546→    setPage(1);
+  1547→    if (sliderTimerRef.current) clearTimeout(sliderTimerRef.current);
+  1548→  };
+  1549→
+  1550→  const totalPages = Math.ceil(total / PER_PAGE);
+  1551→
+  1552→  // "All categories" page
+  1553→  if (view.categoryId === 0) {
+  1554→    return <CategoryAllPage categories={categories} onNavigate={onNavigate} />;
+  1555→  }
+  1556→
+  1557→  const categoryName = (() => {
+  1558→    const cat = categories.find(c => c.id === view.categoryId);
+  1559→    if (cat) return cat.name;
+  1560→    for (const c of categories) {
+  1561→      const sub = c.children.find(ch => ch.id === view.categoryId);
+  1562→      if (sub) return sub.name;
+  1563→    }
+  1564→    return view.slug;
+  1565→  })();
+  1566→
+  1567→  const renderFilterContent = () => (
+  1568→    <div className="flex flex-col gap-6">
+  1569→      {/* Brands */}
+  1570→      <div>
+  1571→        <h3 className="text-sm font-bold text-mersadent-dark mb-3">برند</h3>
+  1572→        <div className="flex flex-col gap-2 max-h-48 overflow-y-auto">
+  1573→          {brands.map(b => {
+  1574→            const isActive = selectedBrands.includes(b.id);
+  1575→            return (
+  1576→              <button
+  1577→                key={b.id}
+  1578→                type="button"
+  1579→                onClick={() => {
+  1580→                  if (isActive) {
+  1581→                    setSelectedBrands(prev => prev.filter(id => id !== b.id));
+  1582→                  } else {
+  1583→                    setSelectedBrands(prev => [...prev, b.id]);
+  1584→                  }
+  1585→                  setPage(1);
+  1586→                }}
+  1587→                className="flex items-center gap-2 cursor-pointer group w-full text-right"
+  1588→              >
+  1589→                <span
+  1590→                  className={`w-4 h-4 rounded-[4px] border-2 flex items-center justify-center shrink-0 transition-all ${
+  1591→                    isActive
+  1592→                      ? 'bg-[#2FC4C9] border-[#2FC4C9]'
+  1593→                      : 'border-gray-300 group-hover:border-[#2FC4C9]/50'
+  1594→                  }`}
+  1595→                >
+  1596→                  {isActive && (
+  1597→                    <svg className="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+  1598→                      <polyline points="20 6 9 17 4 12" />
+  1599→                    </svg>
+  1600→                  )}
+  1601→                </span>
+  1602→                <span className={`text-sm transition-colors ${isActive ? 'text-mersadent-dark font-medium' : 'text-gray-600 group-hover:text-mersadent-dark'}`}>
+  1603→                  {b.name}
+  1604→                </span>
+  1605→                <span className="text-xs text-gray-400 mr-auto">({b._count.products})</span>
+  1606→              </button>
+  1607→            );
+  1608→          })}
+  1609→        </div>
+  1610→      </div>
+  1611→
+  1612→      <Separator />
+  1613→
+  1614→      {/* Price Range */}
+  1615→      <div>
+  1616→        <h3 className="text-sm font-bold text-mersadent-dark mb-3">محدوده قیمت</h3>
+  1617→        <Slider
+  1618→          value={sliderValue}
+  1619→          onValueChange={handleSliderChange}
+  1620→          min={0}
+  1621→          max={maxPrice}
+  1622→          step={500000}
+  1623→          className="mb-2"
+  1624→        />
+  1625→        <div className="flex justify-between text-xs text-gray-500">
+  1626→          <span>{formatPrice(sliderValue[0])}</span>
+  1627→          <span>{formatPrice(sliderValue[1])}</span>
+  1628→        </div>
+  1629→      </div>
+  1630→
+  1631→      <Separator />
+  1632→
+  1633→      {/* Availability */}
+  1634→      <div>
+  1635→        <h3 className="text-sm font-bold text-mersadent-dark mb-3">وضعیت موجودی</h3>
+  1636→        <div className="flex flex-col gap-2">
+  1637→          {[
+  1638→            { value: '', label: 'همه' },
+  1639→            { value: 'in_stock', label: 'موجود' },
+  1640→            { value: 'out_of_stock', label: 'ناموجود' },
+  1641→          ].map(opt => (
+  1642→            <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+  1643→              <input
+  1644→                type="radio"
+  1645→                name="availability"
+  1646→                value={opt.value}
+  1647→                checked={availabilityFilter === opt.value}
+  1648→                onChange={(e) => {
+  1649→                  setAvailabilityFilter(e.target.value);
+  1650→                  setPage(1);
+  1651→                }}
+  1652→                className="accent-mersadent-accent"
+  1653→              />
+  1654→              <span className="text-sm text-gray-600">{opt.label}</span>
+  1655→            </label>
+  1656→          ))}
+  1657→        </div>
+  1658→      </div>
+  1659→
+  1660→      <Button
+  1661→        variant="outline"
+  1662→        onClick={clearFilters}
+  1663→        className="mt-2 text-sm border-mersadent-accent/30 text-mersadent-accent hover:bg-mersadent-accent/5"
+  1664→      >
+  1665→        <RotateCcw className="w-3.5 h-3.5 ml-1" />
+  1666→        پاک کردن فیلترها
+  1667→      </Button>
+  1668→    </div>
+  1669→  );
+  1670→
+  1671→  return (
+  1672→    <motion.div {...fadeIn} className="max-w-7xl mx-auto px-4 sm:px-6 pb-8">
+  1673→      {/* Breadcrumb */}
+  1674→      <Breadcrumb className="mb-6">
+  1675→        <BreadcrumbList>
+  1676→          <BreadcrumbItem>
+  1677→            <BreadcrumbLink onClick={() => onNavigate({ type: 'home' })} className="cursor-pointer flex items-center gap-1 text-sm">
+  1678→              <Home className="w-3.5 h-3.5" />
+  1679→              خانه
+  1680→            </BreadcrumbLink>
+  1681→          </BreadcrumbItem>
+  1682→          {view.parentName && (
+  1683→            <>
+  1684→              <BreadcrumbSeparator />
+  1685→              <BreadcrumbItem>
+  1686→                <BreadcrumbLink
+  1687→                  onClick={() => onNavigate({
+  1688→                    type: 'category',
+  1689→                    categoryId: categories.find(c => c.name === view.parentName)?.id || 0,
+  1690→                    slug: view.parentSlug || '',
+  1691→                  })}
+  1692→                  className="cursor-pointer text-sm"
+  1693→                >
+  1694→                  {view.parentName}
+  1695→                </BreadcrumbLink>
+  1696→              </BreadcrumbItem>
+  1697→            </>
+  1698→          )}
+  1699→          <BreadcrumbSeparator />
+  1700→          <BreadcrumbItem>
+  1701→            <BreadcrumbPage>{categoryName}</BreadcrumbPage>
+  1702→          </BreadcrumbItem>
+  1703→        </BreadcrumbList>
+  1704→      </Breadcrumb>
+  1705→
+  1706→      {/* Title row */}
+  1707→      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+  1708→        <h1 className="text-xl sm:text-2xl font-bold text-mersadent-dark">{categoryName}</h1>
+  1709→        <div className="flex items-center gap-2">
+  1710→          <span className="text-sm text-gray-400">{total} محصول</span>
+  1711→          {/* Mobile filter trigger */}
+  1712→          <div className="sm:hidden">
+  1713→            <Drawer open={filterOpen} onOpenChange={setFilterOpen}>
+  1714→              <DrawerTrigger asChild>
+  1715→                <Button variant="outline" size="sm" className="gap-1.5">
+  1716→                  <SlidersHorizontal className="w-4 h-4" />
+  1717→                  فیلتر
+  1718→                </Button>
+  1719→              </DrawerTrigger>
+  1720→              <DrawerContent>
+  1721→                <DrawerHeader className="border-b border-gray-100">
+  1722→                  <DrawerTitle>فیلتر محصولات</DrawerTitle>
+  1723→                </DrawerHeader>
+  1724→                <div className="p-4 max-h-[60vh] overflow-y-auto">
+  1725→                  {renderFilterContent()}
+  1726→                </div>
+  1727→                <DrawerFooter className="border-t border-gray-100">
+  1728→                  <DrawerClose asChild>
+  1729→                    <Button className="bg-mersadent-accent text-white">اعمال فیلتر</Button>
+  1730→                  </DrawerClose>
+  1731→                </DrawerFooter>
+  1732→              </DrawerContent>
+  1733→            </Drawer>
+  1734→          </div>
+  1735→          <Select value={sort} onValueChange={(v) => { setSort(v); setPage(1); }}>
+  1736→            <SelectTrigger className="w-36 h-9 text-sm">
+  1737→              <SelectValue />
+  1738→            </SelectTrigger>
+  1739→            <SelectContent>
+  1740→              <SelectItem value="newest">جدیدترین</SelectItem>
+  1741→              <SelectItem value="price-asc">ارزان‌ترین</SelectItem>
+  1742→              <SelectItem value="price-desc">گران‌ترین</SelectItem>
+  1743→              <SelectItem value="name">الفبایی</SelectItem>
+  1744→            </SelectContent>
+  1745→          </Select>
+  1746→        </div>
+  1747→      </div>
+  1748→
+  1749→      <div className="flex gap-6">
+  1750→        {/* Desktop Sidebar */}
+  1751→        <aside className="hidden sm:block w-56 flex-shrink-0">
+  1752→          <div className="sticky top-20 bg-white rounded-2xl border border-gray-100 p-5">
+  1753→            <h2 className="text-sm font-bold text-mersadent-dark mb-4 flex items-center gap-2">
+  1754→              <Filter className="w-4 h-4" />
+  1755→              فیلترها
+  1756→            </h2>
+  1757→            {renderFilterContent()}
+  1758→          </div>
+  1759→        </aside>
+  1760→
+  1761→        {/* Product grid */}
+  1762→        <div className="flex-1 min-w-0">
+  1763→          {loading ? (
+  1764→            <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+  1765→              {Array.from({ length: 8 }).map((_, i) => (
+  1766→                <Skeleton key={i} className="h-64 rounded-xl" />
+  1767→              ))}
+  1768→            </div>
+  1769→          ) : products.length === 0 ? (
+  1770→            <div className="flex flex-col items-center justify-center py-20 text-center">
+  1771→              <Package className="w-16 h-16 text-gray-200 mb-4" />
+  1772→              <h3 className="text-lg font-semibold text-gray-400 mb-2">محصولی یافت نشد</h3>
+  1773→              <p className="text-sm text-gray-400">فیلترهای خود را تغییر دهید</p>
+  1774→            </div>
+  1775→          ) : (
+  1776→            <>
+  1777→              <motion.div
+  1778→                variants={staggerContainer}
+  1779→                initial="initial"
+  1780→                animate="animate"
+  1781→                className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
+  1782→              >
+  1783→                {products.map(p => (
+  1784→                  <motion.div key={p.id} variants={staggerItem}>
+  1785→                    <ProductCard
+  1786→                      product={p}
+  1787→                      onClick={() => onNavigate({ type: 'product', productId: p.id })}
+  1788→                      user={user}
+  1789→                      onAuthRequired={onAuthRequired}
+  1790→                      onAddToCart={onAddToCart}
+  1791→                      onToggleCompare={() => toggleCompare(p)}
+  1792→                      isInCompare={isInCompare(p.id)}
+  1793→                    />
+  1794→                  </motion.div>
+  1795→                ))}
+  1796→              </motion.div>
+  1797→
+  1798→              {/* Pagination */}
+  1799→              {totalPages > 1 && (
+  1800→                <div className="flex items-center justify-center gap-2 mt-8">
+  1801→                  <Button
+  1802→                    variant="outline"
+  1803→                    size="sm"
+  1804→                    disabled={page === 1}
+  1805→                    onClick={() => setPage(p => p - 1)}
+  1806→                    className="gap-1"
+  1807→                  >
+  1808→                    <ChevronRight className="w-4 h-4" />
+  1809→                    قبلی
+  1810→                  </Button>
+  1811→                  {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+  1812→                    let pageNum: number;
+  1813→                    if (totalPages <= 5) {
+  1814→                      pageNum = i + 1;
+  1815→                    } else if (page <= 3) {
+  1816→                      pageNum = i + 1;
+  1817→                    } else if (page >= totalPages - 2) {
+  1818→                      pageNum = totalPages - 4 + i;
+  1819→                    } else {
+  1820→                      pageNum = page - 2 + i;
+  1821→                    }
+  1822→                    return (
+  1823→                      <Button
+  1824→                        key={pageNum}
+  1825→                        variant={page === pageNum ? 'default' : 'outline'}
+  1826→                        size="sm"
+  1827→                        onClick={() => setPage(pageNum)}
+  1828→                        className={page === pageNum ? 'bg-mersadent-accent hover:bg-mersadent-accent/90 text-white' : 'w-9 h-9 p-0'}
+  1829→                      >
+  1830→                        {new Intl.NumberFormat('fa-IR').format(pageNum)}
+  1831→                      </Button>
+  1832→                    );
+  1833→                  })}
+  1834→                  <Button
+  1835→                    variant="outline"
+  1836→                    size="sm"
+  1837→                    disabled={page === totalPages}
+  1838→                    onClick={() => setPage(p => p + 1)}
+  1839→                    className="gap-1"
+  1840→                  >
+  1841→                    بعدی
+  1842→                    <ChevronLeft className="w-4 h-4" />
+  1843→                  </Button>
+  1844→                </div>
+  1845→              )}
+  1846→            </>
+  1847→          )}
+  1848→        </div>
+  1849→      </div>
+  1850→    </motion.div>
+  1851→  );
+  1852→}
+  1853→
+  1854→// ============================================================
+  1855→// BRAND ALL PAGE
+  1856→// ============================================================
+  1857→function BrandAllPage({ brands, onNavigate }: { brands: Brand[]; onNavigate: (view: PageView) => void }) {
+  1858→  return (
+  1859→    <motion.div {...fadeIn} className="max-w-7xl mx-auto px-4 sm:px-6 pb-8">
+  1860→      <Breadcrumb className="mb-6">
+  1861→        <BreadcrumbList>
+  1862→          <BreadcrumbItem>
+  1863→            <BreadcrumbLink onClick={() => onNavigate({ type: 'home' })} className="cursor-pointer flex items-center gap-1 text-sm">
+  1864→              <Home className="w-3.5 h-3.5" />
+  1865→              خانه
+  1866→            </BreadcrumbLink>
+  1867→          </BreadcrumbItem>
+  1868→          <BreadcrumbSeparator />
+  1869→          <BreadcrumbItem>
+  1870→            <BreadcrumbPage>برندها</BreadcrumbPage>
+  1871→          </BreadcrumbItem>
+  1872→        </BreadcrumbList>
+  1873→      </Breadcrumb>
+  1874→
+  1875→      <h1 className="text-xl sm:text-2xl font-bold text-mersadent-dark mb-8">همه برندها</h1>
+  1876→
+  1877→      <motion.div
+  1878→        variants={staggerContainer}
+  1879→        initial="initial"
+  1880→        animate="animate"
+  1881→        className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4"
+  1882→      >
+  1883→        {brands.map(b => (
+  1884→          <motion.button
+  1885→            key={b.id}
+  1886→            variants={staggerItem}
+  1887→            whileHover={{ scale: 1.04 }}
+  1888→            whileTap={{ scale: 0.96 }}
+  1889→            onClick={() => onNavigate({ type: 'brand', brandId: b.id, brandName: b.name })}
+  1890→            className="flex flex-col items-center justify-center gap-3 p-5 bg-white rounded-2xl border border-gray-100 hover:border-mersadent-accent/30 hover:shadow-lg transition-all group"
+  1891→          >
+  1892→            <div className="w-16 h-16 rounded-full bg-mersadent-bg flex items-center justify-center group-hover:bg-mersadent-accent/10 transition-colors overflow-hidden">
+  1893→              {b.logo ? (
+  1894→                <img src={b.logo} alt={b.name} className="w-full h-full object-contain p-1.5" />
+  1895→              ) : (
+  1896→                <Package className="w-8 h-8 text-gray-300 group-hover:text-mersadent-accent transition-colors" />
+  1897→              )}
+  1898→            </div>
+  1899→            <div className="text-center">
+  1900→              <span className="text-sm font-bold text-mersadent-dark block">{b.name}</span>
+  1901→              <span className="text-xs text-gray-400 mt-0.5 block">{b._count.products} محصول</span>
+  1902→            </div>
+  1903→          </motion.button>
+  1904→        ))}
+  1905→      </motion.div>
+  1906→    </motion.div>
+  1907→  );
+  1908→}
+  1909→
+  1910→// ============================================================
+  1911→// BRAND PRODUCTS PAGE
+  1912→// ============================================================
+  1913→function BrandPage({
+  1914→  view,
+  1915→  onNavigate,
+  1916→  user,
+  1917→  onAuthRequired,
+  1918→  onAddToCart,
+  1919→}: {
+  1920→  view: Extract<PageView, { type: 'brand' }>;
+  1921→  onNavigate: (view: PageView) => void;
+  1922→  user: UserData | null;
+  1923→  onAuthRequired: () => void;
+  1924→  onAddToCart: (productId: number) => void;
+  1925→}) {
+  1926→  const [products, setProducts] = useState<Product[]>([]);
+  1927→  const [total, setTotal] = useState(0);
+  1928→  const [page, setPage] = useState(1);
+  1929→  const [loading, setLoading] = useState(true);
+  1930→
+  1931→  const { toggleCompare, isInCompare } = useCompare();
+  1932→
+  1933→  const PER_PAGE = 12;
+  1934→
+  1935→  useEffect(() => {
+  1936→    if (view.brandId === 0) return;
+  1937→    let cancelled = false;
+  1938→    (async () => {
+  1939→      try {
+  1940→        setLoading(true);
+  1941→        const res = await fetch(`/api/products?brandId=${view.brandId}&page=${page}&limit=${PER_PAGE}`);
+  1942→        const data = await res.json();
+  1943→        if (!cancelled) {
+  1944→          setProducts(data.products || []);
+  1945→          setTotal(data.total || 0);
+  1946→        }
+  1947→      } catch {}
+  1948→      if (!cancelled) setLoading(false);
+  1949→    })();
+  1950→    return () => { cancelled = true; };
+  1951→  }, [view.brandId, page]);
+  1952→
+  1953→  const totalPages = Math.ceil(total / PER_PAGE);
+  1954→
+  1955→  if (view.brandId === 0) return null; // handled by parent
+  1956→
+  1957→  return (
+  1958→    <motion.div {...fadeIn} className="max-w-7xl mx-auto px-4 sm:px-6 pb-8">
+  1959→      <Breadcrumb className="mb-6">
+  1960→        <BreadcrumbList>
+  1961→          <BreadcrumbItem>
+  1962→            <BreadcrumbLink onClick={() => onNavigate({ type: 'home' })} className="cursor-pointer flex items-center gap-1 text-sm">
+  1963→              <Home className="w-3.5 h-3.5" />
+  1964→              خانه
+  1965→            </BreadcrumbLink>
+  1966→          </BreadcrumbItem>
+  1967→          <BreadcrumbSeparator />
+  1968→          <BreadcrumbItem>
+  1969→            <BreadcrumbPage>{view.brandName}</BreadcrumbPage>
+  1970→          </BreadcrumbItem>
+  1971→        </BreadcrumbList>
+  1972→      </Breadcrumb>
+  1973→
+  1974→      <div className="flex items-center gap-4 mb-8">
+  1975→        <div className="w-14 h-14 rounded-full bg-mersadent-bg flex items-center justify-center">
+  1976→          <Package className="w-7 h-7 text-mersadent-accent" />
+  1977→        </div>
+  1978→        <div>
+  1979→          <h1 className="text-xl sm:text-2xl font-bold text-mersadent-dark">{view.brandName}</h1>
+  1980→          <p className="text-sm text-gray-400">{total} محصول</p>
+  1981→        </div>
+  1982→      </div>
+  1983→
+  1984→      {loading ? (
+  1985→        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+  1986→          {Array.from({ length: 8 }).map((_, i) => (
+  1987→            <Skeleton key={i} className="h-64 rounded-xl" />
+  1988→          ))}
+  1989→        </div>
+  1990→      ) : (
+  1991→        <>
+  1992→          <motion.div
+  1993→            variants={staggerContainer}
+  1994→            initial="initial"
+  1995→            animate="animate"
+  1996→            className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
+  1997→          >
+  1998→            {products.map(p => (
+  1999→              <motion.div key={p.id} variants={staggerItem}>
+  2000→                <ProductCard
+
+[showing lines 1-2000 of 3970; use offset=2001 with limit to continue reading]

@@ -1083,7 +1083,7 @@ function HomePage({ onNavigate, user, onAuthRequired, onAddToCart }: { onNavigat
   }, [brands]);
 
   return (
-    <div className="flex flex-col gap-8 pb-8">
+    <div className="space-y-8 pb-8">
       {/* ===== HERO SLIDER ===== */}
       <HeroSlider onNavigate={onNavigate} />
 
@@ -3923,7 +3923,7 @@ export default function MersadentApp() {
           onLogout={handleUserLogout}
           onOpenCart={() => setCartSidebarOpen(true)}
         />
-        <main className="flex-1 py-6 sm:py-8">
+        <main className="flex-1 min-w-0 overflow-x-clip py-6 sm:py-8">
           <AnimatePresence mode="wait">
             {renderView()}
           </AnimatePresence>
