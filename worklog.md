@@ -484,3 +484,29 @@ Stage Summary:
 - Patch 3 ✅: A required "نوع محصول" field (دستگاه/مواد/ابزار/مصرفی) sits right after the category picker, and a conditional "مشخصات اختصاصی" section renders type-specific fields (all optional) stored as JSON in typeFields.
 - Patch 4 ✅: A "ویژگی‌های سفارشی" section (after description, before SEO) lets admins add/remove label-value rows, stored as JSON in customSpecs.
 - All untouched sections (category cascader, brand, price/discount, AI super-prompt, strengths/weaknesses, description, SEO) remain intact.
+
+---
+Task ID: footer-settings-and-blog-banner
+Agent: main
+Task: Two patches — (1) hide blog article previews on the homepage and replace them with a single clickable "read educational articles here" banner that routes to the blog page; (2) fix the footer so it reflects admin-saved contact info (phone / email / address / instagram / telegram / whatsapp) instead of hardcoded values.
+
+Work Log:
+- Rewrote `BlogPreviewSection` in `src/app/page.tsx` (was a 3-card article preview that fetched `/api/blog?limit=3`) into a single full-width clickable banner button with a BookOpen icon, the heading "مقالات آموزشی را از اینجا بخوانید", a short subtitle, and a "ورود به بخش مقالات" arrow. Clicking it calls `onNavigate({ type: 'blog' })` and scrolls to top.
+- Created a new public GET endpoint at `src/app/api/settings/route.ts` that returns only whitelisted storefront keys (`site_name`, `site_description`, `phone`, `email`, `address`, `instagram`, `telegram`, `whatsapp`) from the `SiteSetting` table. Marked `export const dynamic = 'force-dynamic'` and `revalidate = 0` plus `Cache-Control: no-store` so admin changes appear immediately on the storefront.
+- Rewrote the `Footer` component in `src/app/page.tsx` to fetch `/api/settings` on mount and render the contact info dynamically:
+  - Phone: `<a href="tel:...">` with a Persian-digit-aware normalizer for the `tel:` href.
+  - Email: `<a href="mailto:...">`.
+  - Address: links to an nshn.ir search using the saved address text.
+  - Added a new social icons row (Instagram / Telegram / WhatsApp) in the company-info column — each only renders if the corresponding setting is non-empty.
+  - Site description in the company-info column now also comes from settings.
+- Added `Instagram` to the existing `lucide-react` import list in `page.tsx` (was missing, lint caught it).
+- Verified end-to-end with Agent Browser:
+  - Homepage blog banner is visible and clickable; clicking it navigates to the blog list page (breadcrumb `خانه / مقالات آموزشی`, heading `مقالات آموزشی`, article cards listed).
+  - Footer originally showed the user's saved settings: phone `04432225277`, email `salam@gmail.com`, address `ارومیه عمار ساختمان پزشکان مرتاض`, plus Instagram/Telegram/WhatsApp social icon links.
+  - Changed phone in admin → saved → reloaded storefront → footer phone updated from `04432225277` → `04439998877` immediately (no cache delay). Reverted the test change afterward; footer now shows `04432225277` again.
+- `bun run lint` passes (the only remaining error is a pre-existing one in `mersadent-clone/examples/websocket/frontend.tsx`, unrelated to this work).
+
+Stage Summary:
+- Homepage no longer shows article previews — replaced by a single clickable gradient banner ("مقالات آموزشی را از اینجا بخوانید") that routes to the blog page.
+- Footer now reads contact info + socials from a new uncached public endpoint (`GET /api/settings`); admin changes to phone/email/address/instagram/telegram/whatsapp are reflected immediately on the storefront after save + page reload.
+- New file: `src/app/api/settings/route.ts`. Modified file: `src/app/page.tsx` (`BlogPreviewSection` rewrite, `Footer` rewrite, added `Instagram` import).

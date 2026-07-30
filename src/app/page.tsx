@@ -12,7 +12,7 @@ import {
   Users, FileText, Cog, Lightbulb, Camera, Zap, Settings, ShieldCheck,
   RotateCcw, Send, CheckCircle2, AlertCircle, BookOpen, Calendar, ArrowLeft,
   Wrench, AlertTriangle, ShoppingCart, HeartPulse, ExternalLink,
-  LogIn, User, X, Plus, Minus, Loader2, GitCompareArrows, LayoutGrid
+  LogIn, User, X, Plus, Minus, Loader2, GitCompareArrows, LayoutGrid, Instagram
 } from 'lucide-react';
 import { AuthModal } from '@/components/auth/AuthModal';
 import { CartSidebar } from '@/components/cart/CartSidebar';
@@ -2887,105 +2887,39 @@ function AboutPage({ onNavigate }: { onNavigate: (view: PageView) => void }) {
 }
 
 // ============================================================
-// BLOG PREVIEW SECTION (used in Homepage)
+// BLOG ENTRY BANNER (used in Homepage) — clickable rectangle that
+// routes the user to the full articles page instead of previewing posts.
 // ============================================================
 function BlogPreviewSection({ onNavigate }: { onNavigate: (view: PageView) => void }) {
-  const [posts, setPosts] = useState<BlogPostListItem[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const [visible, setVisible] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) { setVisible(true); observer.disconnect(); } },
-      { rootMargin: '200px' }
-    );
-    if (containerRef.current) observer.observe(containerRef.current);
-    return () => observer.disconnect();
-  }, []);
-
-  useEffect(() => {
-    if (!visible) return;
-    fetch('/api/blog?limit=3')
-      .then(r => r.json())
-      .then(data => {
-        setPosts(data.posts || []);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, [visible]);
-
-  const persianDate = (dateStr: string) => {
-    return new Intl.DateTimeFormat('fa-IR', { month: 'short', day: 'numeric' }).format(new Date(dateStr));
-  };
-
-  if (!visible || loading) {
-    if (!visible) return <div ref={containerRef} className="h-4" />;
-    return (
-      <section ref={containerRef} className="max-w-7xl mx-auto px-4 sm:px-6">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-48 rounded-xl" />
-          ))}
-        </div>
-      </section>
-    );
-  }
-
-  if (posts.length === 0) return null;
-
   return (
-    <section ref={containerRef} className="max-w-7xl mx-auto px-4 sm:px-6">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-base sm:text-lg font-bold text-mersadent-dark">مقالات آموزشی</h2>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => onNavigate({ type: 'blog' })}
-          className="text-mersadent-accent text-xs"
-        >
-          همه مقالات
-          <ChevronLeft className="w-3.5 h-3.5 mr-0.5" />
-        </Button>
-      </div>
+    <section className="max-w-7xl mx-auto px-4 sm:px-6">
+      <button
+        type="button"
+        onClick={() => { onNavigate({ type: 'blog' }); window.scrollTo(0, 0); }}
+        className="group w-full relative overflow-hidden rounded-2xl border border-mersadent-accent/20 bg-gradient-to-l from-mersadent-dark via-mersadent-dark to-[#1e2d4d] text-white p-6 sm:p-8 flex items-center justify-between gap-4 text-right hover:border-mersadent-accent/50 hover:shadow-lg transition-all"
+      >
+        {/* Decorative icon */}
+        <div className="flex items-center gap-4 flex-1 min-w-0">
+          <div className="flex-shrink-0 w-14 h-14 sm:w-16 sm:h-16 rounded-xl bg-mersadent-accent/15 text-mersadent-accent flex items-center justify-center group-hover:bg-mersadent-accent/25 transition-colors">
+            <BookOpen className="w-7 h-7 sm:w-8 sm:h-8" />
+          </div>
+          <div className="flex flex-col gap-1 min-w-0">
+            <h2 className="text-base sm:text-lg font-bold leading-7">
+              مقالات آموزشی را از اینجا بخوانید
+            </h2>
+            <p className="text-xs sm:text-sm text-gray-300 leading-6 line-clamp-2">
+              جدیدترین مطالب و راهنماهای تخصصی دندانپزشکی را در بخش مقالات دنبال کنید.
+            </p>
+          </div>
+        </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        {posts.map((post) => (
-          <Card
-            key={post.id}
-            className="cursor-pointer group border border-gray-100 hover:border-mersadent-accent/40 hover:shadow-md transition-all overflow-hidden"
-            onClick={() => onNavigate({ type: 'blogPost', slug: post.slug })}
-          >
-            <div className="relative w-full aspect-[16/7] bg-gradient-to-br from-mersadent-dark/5 to-mersadent-accent/10 flex items-center justify-center overflow-hidden">
-              {post.coverImage ? (
-                <img
-                  src={post.coverImage}
-                  alt={post.title}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                />
-              ) : (
-                <BookOpen className="w-8 h-8 text-mersadent-accent/30" />
-              )}
-              <Badge className="absolute top-2 right-2 bg-white/90 text-mersadent-dark text-[9px] font-medium px-1.5 py-0 shadow-sm">
-                {post.category.name}
-              </Badge>
-            </div>
-            <CardContent className="p-3 flex flex-col gap-1.5">
-              <h3 className="text-xs font-bold text-mersadent-dark leading-5 line-clamp-2 group-hover:text-mersadent-accent transition-colors">
-                {post.title}
-              </h3>
-              <div className="flex items-center justify-between pt-1.5 mt-auto border-t border-gray-50">
-                <span className="text-[10px] text-gray-400 flex items-center gap-1">
-                  <Calendar className="w-2.5 h-2.5" />
-                  {persianDate(post.createdAt)}
-                </span>
-                <span className="text-[11px] text-mersadent-accent font-medium">ادامه ←</span>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+        {/* Arrow indicator */}
+        <div className="hidden sm:flex flex-shrink-0 items-center gap-1.5 text-mersadent-accent text-sm font-medium ps-2">
+          ورود به بخش مقالات
+          <ChevronLeft className="w-5 h-5 transition-transform group-hover:-translate-x-1" />
+        </div>
+        <ChevronLeft className="sm:hidden w-5 h-5 text-mersadent-accent flex-shrink-0" />
+      </button>
     </section>
   );
 }
@@ -3610,13 +3544,38 @@ function MobileBottomNav({
 // ============================================================
 function Footer({ onNavigate }: { onNavigate: (view: PageView) => void }) {
   const [categories, setCategories] = useState<Category[]>([]);
+  const [settings, setSettings] = useState<Record<string, string>>({});
 
   useEffect(() => {
     fetch('/api/categories')
       .then(r => r.json())
       .then(data => setCategories(data))
       .catch(() => {});
+    fetch('/api/settings')
+      .then(r => r.json())
+      .then(d => { if (d?.settings) setSettings(d.settings); })
+      .catch(() => {});
   }, []);
+
+  // Normalize a phone string for tel: href (strip non-digits, convert Persian digits)
+  const telHref = (raw: string) => {
+    if (!raw) return '';
+    const persian = '۰۱۲۳۴۵۶۷۸۹';
+    let out = '';
+    for (const ch of raw) {
+      const idx = persian.indexOf(ch);
+      out += idx >= 0 ? String(idx) : ch;
+    }
+    return `tel:${out.replace(/[^\d+]/g, '')}`;
+  };
+
+  const phone = settings.phone?.trim() || '';
+  const email = settings.email?.trim() || '';
+  const address = settings.address?.trim() || '';
+  const instagram = settings.instagram?.trim() || '';
+  const telegram = settings.telegram?.trim() || '';
+  const whatsapp = settings.whatsapp?.trim() || '';
+  const hasSocial = instagram || telegram || whatsapp;
 
   return (
     <footer className="bg-mersadent-dark text-white mt-auto">
@@ -3628,8 +3587,45 @@ function Footer({ onNavigate }: { onNavigate: (view: PageView) => void }) {
               <img src="/logo.png" alt="MersaDent" className="h-10 w-auto object-contain" />
             </div>
             <p className="text-sm text-gray-400 leading-7">
-              تأمین‌کننده انواع تجهیزات و مواد مصرفی دندانپزشکی با بهترین کیفیت و قیمت
+              {settings.site_description || 'تأمین‌کننده انواع تجهیزات و مواد مصرفی دندانپزشکی با بهترین کیفیت و قیمت'}
             </p>
+            {hasSocial && (
+              <div className="flex items-center gap-2 mt-4">
+                {instagram && (
+                  <a
+                    href={instagram}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="اینستاگرام"
+                    className="w-9 h-9 rounded-full bg-white/5 hover:bg-mersadent-accent/20 text-gray-300 hover:text-mersadent-accent flex items-center justify-center transition-colors"
+                  >
+                    <Instagram className="w-4 h-4" />
+                  </a>
+                )}
+                {telegram && (
+                  <a
+                    href={telegram}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="تلگرام"
+                    className="w-9 h-9 rounded-full bg-white/5 hover:bg-mersadent-accent/20 text-gray-300 hover:text-mersadent-accent flex items-center justify-center transition-colors"
+                  >
+                    <Send className="w-4 h-4" />
+                  </a>
+                )}
+                {whatsapp && (
+                  <a
+                    href={whatsapp}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="واتساپ"
+                    className="w-9 h-9 rounded-full bg-white/5 hover:bg-mersadent-accent/20 text-gray-300 hover:text-mersadent-accent flex items-center justify-center transition-colors"
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                  </a>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Categories */}
@@ -3678,28 +3674,36 @@ function Footer({ onNavigate }: { onNavigate: (view: PageView) => void }) {
           <div>
             <h3 className="text-sm font-bold mb-4">تماس با ما</h3>
             <ul className="flex flex-col gap-3">
-              <li>
-                <a href="tel:02112345678" className="flex items-center gap-2 text-sm text-gray-400 hover:text-mersadent-accent transition-colors">
-                  <Phone className="w-4 h-4 text-mersadent-accent flex-shrink-0" />
-                  ۰۲۱-۱۲۳۴۵۶۷۸
-                </a>
-              </li>
-              <li className="flex items-center gap-2 text-sm text-gray-400">
-                <Mail className="w-4 h-4 text-mersadent-accent flex-shrink-0" />
-                info@mersadent.com
-              </li>
-              <li>
-                <a
-                  href="https://nshn.ir/e37bLd8Y0Aqd3M"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-start gap-2 text-sm text-gray-400 hover:text-mersadent-accent transition-colors"
-                >
-                  <MapPin className="w-4 h-4 text-mersadent-accent flex-shrink-0 mt-0.5" />
-                  ارومیه، بزرگراه شهید باهنر، نهم، بین چهارده متری دوم و عمار (محله‌ی عمار)، ساختمان پزشکان مرتاض طبقه ۳ واحد B
-                  <ExternalLink className="w-3 h-3 flex-shrink-0 mt-0.5" />
-                </a>
-              </li>
+              {phone && (
+                <li>
+                  <a href={telHref(phone)} className="flex items-center gap-2 text-sm text-gray-400 hover:text-mersadent-accent transition-colors">
+                    <Phone className="w-4 h-4 text-mersadent-accent flex-shrink-0" />
+                    <span dir="ltr" className="text-right">{phone}</span>
+                  </a>
+                </li>
+              )}
+              {email && (
+                <li>
+                  <a href={`mailto:${email}`} className="flex items-center gap-2 text-sm text-gray-400 hover:text-mersadent-accent transition-colors">
+                    <Mail className="w-4 h-4 text-mersadent-accent flex-shrink-0" />
+                    <span dir="ltr" className="text-right">{email}</span>
+                  </a>
+                </li>
+              )}
+              {address && (
+                <li>
+                  <a
+                    href={`https://nshn.ir/search?q=${encodeURIComponent(address)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-start gap-2 text-sm text-gray-400 hover:text-mersadent-accent transition-colors"
+                  >
+                    <MapPin className="w-4 h-4 text-mersadent-accent flex-shrink-0 mt-0.5" />
+                    <span>{address}</span>
+                    <ExternalLink className="w-3 h-3 flex-shrink-0 mt-0.5" />
+                  </a>
+                </li>
+              )}
               <li className="flex items-center gap-2 text-sm text-gray-400">
                 <Clock className="w-4 h-4 text-mersadent-accent flex-shrink-0" />
                 شنبه تا پنجشنبه ۹ - ۱۸
