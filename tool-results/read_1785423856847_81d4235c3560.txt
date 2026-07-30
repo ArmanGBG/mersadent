@@ -1,0 +1,719 @@
+     1→'use client';
+     2→
+     3→import { useState, useEffect, useCallback, useRef } from 'react';
+     4→import { Button } from '@/components/ui/button';
+     5→import { Input } from '@/components/ui/input';
+     6→import { Label } from '@/components/ui/label';
+     7→import { Card, CardContent } from '@/components/ui/card';
+     8→import { Skeleton } from '@/components/ui/skeleton';
+     9→import { Switch } from '@/components/ui/switch';
+    10→import { Badge } from '@/components/ui/badge';
+    11→import {
+    12→  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+    13→} from '@/components/ui/dialog';
+    14→import {
+    15→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    16→} from '@/components/ui/select';
+    17→import {
+    18→  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    19→  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+    20→} from '@/components/ui/alert-dialog';
+    21→import {
+    22→  DndContext, closestCenter, KeyboardSensor, PointerSensor,
+    23→  useSensor, useSensors, DragOverlay, type DragEndEvent, type DragStartEvent,
+    24→} from '@dnd-kit/core';
+    25→import {
+    26→  arrayMove, SortableContext, sortableKeyboardCoordinates,
+    27→  verticalListSortingStrategy, useSortable, useDroppable,
+    28→} from '@dnd-kit/sortable';
+    29→import { CSS } from '@dnd-kit/utilities';
+    30→import {
+    31→  Plus, Pencil, Trash2, ChevronDown, ChevronLeft, FolderOpen, Loader2,
+    32→  GripVertical, Eye, EyeOff, ArrowDown, ArrowUp, ListTree, ImagePlus, X,
+    33→} from 'lucide-react';
+    34→import { toast } from 'sonner';
+    35→import { adminFetch, toSlug } from '@/lib/admin-utils';
+    36→
+    37→interface CategoryNode {
+    38→  id: number;
+    39→  name: string;
+    40→  slug: string;
+    41→  parentId: number | null;
+    42→  order: number;
+    43→  visible?: boolean;
+    44→  image?: string | null;
+    45→  children?: CategoryNode[];
+    46→  _count?: { products: number; children: number };
+    47→  totalProducts?: number; // aggregated: own + all descendants' products
+    48→}
+    49→
+    50→interface FlatCat {
+    51→  id: number;
+    52→  name: string;
+    53→  slug: string;
+    54→  parentId: number | null;
+    55→  order: number;
+    56→  visible?: boolean;
+    57→  image?: string | null;
+    58→  _count?: { products: number; children: number };
+    59→  totalProducts?: number; // aggregated: own + all descendants' products
+    60→}
+    61→
+    62→const emptyForm = { name: '', slug: '', parentId: '', visible: true, image: '' as string | null };
+    63→
+    64→export function AdminCategories({ token }: { token: string }) {
+    65→  const [categories, setCategories] = useState<CategoryNode[]>([]);
+    66→  const [flat, setFlat] = useState<FlatCat[]>([]);
+    67→  const [loading, setLoading] = useState(true);
+    68→  const [dialogOpen, setDialogOpen] = useState(false);
+    69→  const [editing, setEditing] = useState<CategoryNode | null>(null);
+    70→  const [form, setForm] = useState({ ...emptyForm });
+    71→  const [saving, setSaving] = useState(false);
+    72→  const [deleteTarget, setDeleteTarget] = useState<CategoryNode | null>(null);
+    73→  const [deleting, setDeleting] = useState(false);
+    74→  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+    75→  const [activeDragId, setActiveDragId] = useState<number | null>(null);
+    76→  const [reordering, setReordering] = useState(false);
+    77→  const [uploading, setUploading] = useState(false);
+    78→  const fileInputRef = useRef<HTMLInputElement | null>(null);
+    79→
+    80→  const sensors = useSensors(
+    81→    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    82→    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+    83→  );
+    84→
+    85→  const load = useCallback(async () => {
+    86→    setLoading(true);
+    87→    try {
+    88→      const [treeRes, flatRes] = await Promise.all([
+    89→        adminFetch(token, '/api/admin/categories'),
+    90→        adminFetch(token, '/api/admin/categories?flat=true'),
+    91→      ]);
+    92→      const treeData = await treeRes.json();
+    93→      const flatData = await flatRes.json();
+    94→      if (treeData.categories) setCategories(treeData.categories);
+    95→      if (flatData.categories) setFlat(flatData.categories);
+    96→    } catch { toast.error('خطا در دریافت دسته‌بندی‌ها'); }
+    97→    finally { setLoading(false); }
+    98→  }, [token]);
+    99→
+   100→  useEffect(() => { load(); }, [load]);
+   101→
+   102→  // Build a map from flat list for resolving parent names (context banner)
+   103→  const nameMap = new Map<number, string>();
+   104→  flat.forEach(c => nameMap.set(c.id, c.name));
+   105→
+   106→  const resolveParentName = (parentId: string | number | null | undefined): string | null => {
+   107→    if (!parentId) return null;
+   108→    return nameMap.get(Number(parentId)) || null;
+   109→  };
+   110→
+   111→  const openCreate = (parentId?: number) => {
+   112→    setEditing(null);
+   113→    setForm({ ...emptyForm, parentId: parentId ? String(parentId) : '' });
+   114→    setDialogOpen(true);
+   115→  };
+   116→
+   117→  const openEdit = (c: CategoryNode) => {
+   118→    setEditing(c);
+   119→    setForm({
+   120→      name: c.name,
+   121→      slug: c.slug,
+   122→      parentId: c.parentId ? String(c.parentId) : '',
+   123→      visible: c.visible !== false,
+   124→      image: c.image || '',
+   125→    });
+   126→    setDialogOpen(true);
+   127→  };
+   128→
+   129→  // ---- Image upload ----
+   130→  const handleImageUpload = async (file: File) => {
+   131→    if (file.size > 2 * 1024 * 1024) {
+   132→      toast.error('حجم فایل نباید بیشتر از ۲ مگابایت باشد');
+   133→      return;
+   134→    }
+   135→    setUploading(true);
+   136→    try {
+   137→      const fd = new FormData();
+   138→      fd.append('file', file);
+   139→      if (editing) fd.append('categoryId', String(editing.id));
+   140→      const res = await fetch('/api/admin/categories/upload', {
+   141→        method: 'POST',
+   142→        headers: { Authorization: `Bearer ${token}` },
+   143→        body: fd,
+   144→      });
+   145→      const data = await res.json();
+   146→      if (data.error) { toast.error(data.error); return; }
+   147→      setForm(f => ({ ...f, image: data.url }));
+   148→      toast.success('تصویر آپلود شد');
+   149→    } catch {
+   150→      toast.error('خطا در آپلود تصویر');
+   151→    } finally {
+   152→      setUploading(false);
+   153→    }
+   154→  };
+   155→
+   156→  const removeImage = async () => {
+   157→    if (editing && form.image) {
+   158→      // Persist null to the DB for existing categories
+   159→      try {
+   160→        await adminFetch(token, '/api/admin/categories', {
+   161→          method: 'PUT',
+   162→          body: JSON.stringify({ id: editing.id, name: form.name, image: null }),
+   163→        });
+   164→      } catch {
+   165→        // ignore — local state is still cleared
+   166→      }
+   167→    }
+   168→    setForm(f => ({ ...f, image: '' }));
+   169→    toast.success('تصویر حذف شد');
+   170→  };
+   171→
+   172→  const handleSave = async () => {
+   173→    if (!form.name) { toast.error('نام الزامی است'); return; }
+   174→    setSaving(true);
+   175→    try {
+   176→      const body: any = {
+   177→        name: form.name,
+   178→        slug: form.slug || toSlug(form.name),
+   179→        parentId: form.parentId ? parseInt(form.parentId) : null,
+   180→        visible: form.visible,
+   181→        image: form.image || null,
+   182→      };
+   183→
+   184→      let res;
+   185→      if (editing) {
+   186→        body.id = editing.id;
+   187→        res = await adminFetch(token, '/api/admin/categories', { method: 'PUT', body: JSON.stringify(body) });
+   188→      } else {
+   189→        res = await adminFetch(token, '/api/admin/categories', { method: 'POST', body: JSON.stringify(body) });
+   190→      }
+   191→      const data = await res.json();
+   192→      if (data.error) { toast.error(data.error); return; }
+   193→      toast.success(editing ? 'بروزرسانی شد' : 'ایجاد شد');
+   194→      setDialogOpen(false);
+   195→      load();
+   196→    } catch { toast.error('خطا'); }
+   197→    finally { setSaving(false); }
+   198→  };
+   199→
+   200→  const handleDelete = async () => {
+   201→    if (!deleteTarget) return;
+   202→    setDeleting(true);
+   203→    try {
+   204→      const res = await adminFetch(token, `/api/admin/categories?id=${deleteTarget.id}`, { method: 'DELETE' });
+   205→      const data = await res.json();
+   206→      if (data.error) { toast.error(data.error); return; }
+   207→      toast.success('حذف شد');
+   208→      setDeleteTarget(null);
+   209→      load();
+   210→    } catch { toast.error('خطا'); }
+   211→    finally { setDeleting(false); }
+   212→  };
+   213→
+   214→  const toggleExpand = (id: number) => {
+   215→    setExpanded(prev => {
+   216→      const next = new Set(prev);
+   217→      if (next.has(id)) { next.delete(id); } else { next.add(id); }
+   218→      return next;
+   219→    });
+   220→  };
+   221→
+   222→  const expandAll = () => {
+   223→    const ids = new Set<number>();
+   224→    const collect = (nodes: CategoryNode[]) => {
+   225→      nodes.forEach(n => {
+   226→        if (n.children && n.children.length > 0) {
+   227→          ids.add(n.id);
+   228→          collect(n.children);
+   229→        }
+   230→      });
+   231→    };
+   232→    collect(categories);
+   233→    setExpanded(ids);
+   234→  };
+   235→
+   236→  const collapseAll = () => setExpanded(new Set());
+   237→
+   238→  // Expand ONLY the full sub-tree of a single main category (collapses everything else first).
+   239→  // Recursively collects all descendant IDs of the chosen root and adds them to `expanded`.
+   240→  const expandSubtree = (rootId: number) => {
+   241→    const ids = new Set<number>();
+   242→    const collect = (node: CategoryNode | undefined | null) => {
+   243→      if (!node) return;
+   244→      if (node.children && node.children.length > 0) {
+   245→        ids.add(node.id);
+   246→        node.children.forEach(collect);
+   247→      }
+   248→    };
+   249→    const root = categories.find(c => c.id === rootId);
+   250→    collect(root);
+   251→    setExpanded(ids);
+   252→  };
+   253→
+   254→  // Toggle visibility with cascade handled on the backend
+   255→  const toggleVisible = async (c: CategoryNode) => {
+   256→    const newVal = !(c.visible !== false);
+   257→    // Optimistic local update
+   258→    const patchTree = (nodes: CategoryNode[]): CategoryNode[] =>
+   259→      nodes.map(n => {
+   260→        if (n.id === c.id) {
+   261→          return { ...n, visible: newVal, children: n.children?.map(ch => ({ ...ch, visible: newVal })) };
+   262→        }
+   263→        if (n.children) return { ...n, children: patchTree(n.children) };
+   264→        return n;
+   265→      });
+   266→    setCategories(prev => patchTree(prev));
+   267→    try {
+   268→      const res = await adminFetch(token, '/api/admin/categories', {
+   269→        method: 'PUT',
+   270→        body: JSON.stringify({ id: c.id, name: c.name, visible: newVal }),
+   271→      });
+   272→      const data = await res.json();
+   273→      if (data.error) {
+   274→        toast.error(data.error);
+   275→        load();
+   276→        return;
+   277→      }
+   278→      toast.success(newVal ? 'نمایش داده شد' : 'از نمایش خارج شد');
+   279→      load();
+   280→    } catch {
+   281→      toast.error('خطا');
+   282→      load();
+   283→    }
+   284→  };
+   285→
+   286→  // ---- Drag & Drop reorder ----
+   287→  const persistOrder = async (items: { id: number; order: number; parentId: number | null }[]) => {
+   288→    setReordering(true);
+   289→    try {
+   290→      const res = await adminFetch(token, '/api/admin/categories', {
+   291→        method: 'PATCH',
+   292→        body: JSON.stringify({ items }),
+   293→      });
+   294→      const data = await res.json();
+   295→      if (data.error) { toast.error(data.error); load(); return; }
+   296→    } catch {
+   297→      toast.error('خطا در ذخیره ترتیب');
+   298→      load();
+   299→    } finally {
+   300→      setReordering(false);
+   301→    }
+   302→  };
+   303→
+   304→  const handleDragStart = (e: DragStartEvent) => {
+   305→    setActiveDragId(Number(e.active.id));
+   306→  };
+   307→
+   308→  // Reorder among siblings (same parent)
+   309→  const handleDragEnd = (e: DragEndEvent, siblings: CategoryNode[], parentId: number | null) => {
+   310→    setActiveDragId(null);
+   311→    const { active, over } = e;
+   312→    if (!over || active.id === over.id) return;
+   313→
+   314→    const oldIndex = siblings.findIndex(c => c.id === active.id);
+   315→    const newIndex = siblings.findIndex(c => c.id === over.id);
+   316→    if (oldIndex === -1 || newIndex === -1) return;
+   317→
+   318→    const reordered = arrayMove(siblings, oldIndex, newIndex);
+   319→
+   320→    // Update local state for this level
+   321→    const updateLevel = (nodes: CategoryNode[]): CategoryNode[] =>
+   322→      nodes.map(n => {
+   323→        if (n.id === parentId) {
+   324→          return { ...n, children: reordered };
+   325→        }
+   326→        if (n.children) return { ...n, children: updateLevel(n.children) };
+   327→        return n;
+   328→      });
+   329→
+   330→    if (parentId === null) {
+   331→      setCategories(reordered);
+   332→    } else {
+   333→      setCategories(prev => updateLevel(prev));
+   334→    }
+   335→
+   336→    // Persist new order + parentId for all moved siblings
+   337→    const payload = reordered.map((c, idx) => ({
+   338→      id: c.id,
+   339→      order: idx,
+   340→      parentId,
+   341→    }));
+   342→    persistOrder(payload);
+   343→  };
+   344→
+   345→  const moveLevel = (c: CategoryNode, direction: 'up' | 'down') => {
+   346→    // Find siblings in the tree
+   347→    const findSiblings = (nodes: CategoryNode[], parentId: number | null): CategoryNode[] | null => {
+   348→      if (parentId === null) return nodes;
+   349→      for (const n of nodes) {
+   350→        if (n.id === parentId) return n.children || [];
+   351→        if (n.children) {
+   352→          const found = findSiblings(n.children, parentId);
+   353→          if (found) return found;
+   354→        }
+   355→      }
+   356→      return null;
+   357→    };
+   358→    const siblings = findSiblings(categories, c.parentId);
+   359→    if (!siblings) return;
+   360→    const idx = siblings.findIndex(s => s.id === c.id);
+   361→    const newIdx = direction === 'up' ? idx - 1 : idx + 1;
+   362→    if (newIdx < 0 || newIdx >= siblings.length) return;
+   363→    const reordered = arrayMove(siblings, idx, newIdx);
+   364→    const updateLevel = (nodes: CategoryNode[]): CategoryNode[] =>
+   365→      nodes.map(n => {
+   366→        if (n.id === c.parentId) return { ...n, children: reordered };
+   367→        if (n.children) return { ...n, children: updateLevel(n.children) };
+   368→        return n;
+   369→      });
+   370→    if (c.parentId === null) setCategories(reordered);
+   371→    else setCategories(prev => updateLevel(prev));
+   372→    persistOrder(reordered.map((cc, i) => ({ id: cc.id, order: i, parentId: c.parentId })));
+   373→  };
+   374→
+   375→  const parents = flat.filter(c => c.parentId === null);
+   376→
+   377→  // ---- Sortable row ----
+   378→  const SortableRow = ({ c, depth }: { c: CategoryNode; depth: number }) => {
+   379→    const {
+   380→      attributes, listeners, setNodeRef, transform, transition, isDragging,
+   381→    } = useSortable({ id: c.id });
+   382→
+   383→    const style = {
+   384→      transform: CSS.Transform.toString(transform),
+   385→      transition,
+   386→      opacity: isDragging ? 0.4 : 1,
+   387→    };
+   388→
+   389→    const hasChildren = (c._count?.children || 0) > 0;
+   390→    const isVisible = c.visible !== false;
+   391→
+   392→    return (
+   393→      <div
+   394→        ref={setNodeRef}
+   395→        style={style}
+   396→        className={`flex items-center border-b last:border-0 group ${!isVisible ? 'bg-gray-50/60' : 'hover:bg-gray-50/50'}`}
+   397→      >
+   398→        <div
+   399→          className="flex items-center gap-2 flex-1 py-2.5 px-3 min-w-0"
+   400→          style={{ paddingRight: `${12 + depth * 22}px` }}
+   401→        >
+   402→          <button
+   403→            {...attributes}
+   404→            {...listeners}
+   405→            className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 touch-none"
+   406→            aria-label="جابجایی"
+   407→          >
+   408→            <GripVertical className="w-4 h-4" />
+   409→          </button>
+   410→          {hasChildren ? (
+   411→            <button onClick={() => toggleExpand(c.id)} className="text-muted-foreground hover:text-foreground">
+   412→              {expanded.has(c.id) ? <ChevronDown className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+   413→            </button>
+   414→          ) : (
+   415→            <span className="w-4" />
+   416→          )}
+   417→          {c.image ? (
+   418→            <img src={c.image} alt={c.name} className="w-6 h-6 rounded-md object-cover flex-shrink-0 border border-gray-200" />
+   419→          ) : (
+   420→            <FolderOpen className={`w-4 h-4 flex-shrink-0 ${isVisible ? 'text-amber-500' : 'text-gray-300'}`} />
+   421→          )}
+   422→          <span className={`font-medium truncate ${!isVisible ? 'text-gray-400 line-through' : ''}`}>{c.name}</span>
+   423→          {!isVisible && (
+   424→            <Badge variant="outline" className="text-[10px] text-gray-400 border-gray-300 bg-gray-50">پنهان</Badge>
+   425→          )}
+   426→        </div>
+   427→        <div className="py-2.5 px-3 text-gray-500 text-xs hidden md:block min-w-[120px]" dir="ltr">{c.slug}</div>
+   428→        <div className="py-2.5 px-3 text-center min-w-[60px]">{c.totalProducts ?? c._count?.products ?? 0}</div>
+   429→        <div className="py-2.5 px-3 text-center min-w-[60px]">{c._count?.children || 0}</div>
+   430→        <div className="py-2.5 px-3 flex items-center justify-center min-w-[60px]">
+   431→          <Switch
+   432→            checked={isVisible}
+   433→            onCheckedChange={() => toggleVisible(c)}
+   434→            aria-label="نمایش/پنهان"
+   435→          />
+   436→        </div>
+   437→        <div className="py-2.5 px-3 flex items-center justify-center gap-1 min-w-[150px]">
+   438→          <button
+   439→            onClick={() => moveLevel(c, 'up')}
+   440→            className="p-1 rounded-md hover:bg-gray-100 text-gray-400 hover:text-gray-600"
+   441→            title="بالا"
+   442→          >
+   443→            <ArrowUp className="w-3.5 h-3.5" />
+   444→          </button>
+   445→          <button
+   446→            onClick={() => moveLevel(c, 'down')}
+   447→            className="p-1 rounded-md hover:bg-gray-100 text-gray-400 hover:text-gray-600"
+   448→            title="پایین"
+   449→          >
+   450→            <ArrowDown className="w-3.5 h-3.5" />
+   451→          </button>
+   452→          <button onClick={() => openCreate(c.id)} className="p-1.5 rounded-md hover:bg-blue-50 text-blue-600" title="افزودن زیردسته">
+   453→            <Plus className="w-4 h-4" />
+   454→          </button>
+   455→          <button onClick={() => openEdit(c)} className="p-1.5 rounded-md hover:bg-blue-50 text-blue-600">
+   456→            <Pencil className="w-4 h-4" />
+   457→          </button>
+   458→          <button onClick={() => setDeleteTarget(c)} className="p-1.5 rounded-md hover:bg-red-50 text-red-500">
+   459→            <Trash2 className="w-4 h-4" />
+   460→          </button>
+   461→        </div>
+   462→      </div>
+   463→    );
+   464→  };
+   465→
+   466→  // ---- Render a level (siblings) with its own DndContext ----
+   467→  const renderLevel = (siblings: CategoryNode[], parentId: number | null, depth: number) => {
+   468→    const ids = siblings.map(s => s.id);
+   469→    return (
+   470→      <DndContext
+   471→        key={`level-${parentId ?? 'root'}`}
+   472→        sensors={sensors}
+   473→        collisionDetection={closestCenter}
+   474→        onDragStart={handleDragStart}
+   475→        onDragEnd={(e) => handleDragEnd(e, siblings, parentId)}
+   476→      >
+   477→        <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+   478→          {siblings.map(c => (
+   479→            <div key={c.id}>
+   480→              <SortableRow c={c} depth={depth} />
+   481→              {expanded.has(c.id) && c.children && c.children.length > 0 && (
+   482→                renderLevel(c.children, c.id, depth + 1)
+   483→              )}
+   484→            </div>
+   485→          ))}
+   486→        </SortableContext>
+   487→      </DndContext>
+   488→    );
+   489→  };
+   490→
+   491→  // Context banner: parent chain
+   492→  const contextName = resolveParentName(form.parentId);
+   493→
+   494→  return (
+   495→    <div className="space-y-4" dir="rtl">
+   496→      {/* Toolbar */}
+   497→      <div className="flex flex-wrap justify-between items-center gap-3">
+   498→        <div className="flex flex-wrap items-center gap-2">
+   499→          <Button variant="outline" size="sm" onClick={expandAll}>
+   500→            <ChevronDown className="w-4 h-4 ml-1" /> باز کردن همه
+   501→          </Button>
+   502→          <Button variant="outline" size="sm" onClick={collapseAll}>
+   503→            <ChevronLeft className="w-4 h-4 ml-1" /> بستن همه
+   504→          </Button>
+   505→          {/* Expand only one main category's subtree */}
+   506→          <div className="flex items-center gap-1.5">
+   507→            <ListTree className="w-4 h-4 text-muted-foreground" />
+   508→            <Select
+   509→              value=""
+   510→              onValueChange={(v) => {
+   511→                if (v) expandSubtree(Number(v));
+   512→              }}
+   513→            >
+   514→              <SelectTrigger className="h-8 w-[200px] text-xs" size="sm">
+   515→                <SelectValue placeholder="باز کردن فقط یک دسته..." />
+   516→              </SelectTrigger>
+   517→              <SelectContent dir="rtl">
+   518→                {categories.map(c => (
+   519→                  <SelectItem key={c.id} value={String(c.id)}>
+   520→                    {c.name}
+   521→                  </SelectItem>
+   522→                ))}
+   523→              </SelectContent>
+   524→            </Select>
+   525→          </div>
+   526→          {reordering && (
+   527→            <span className="text-xs text-muted-foreground flex items-center gap-1">
+   528→              <Loader2 className="w-3 h-3 animate-spin" /> در حال ذخیره ترتیب...
+   529→            </span>
+   530→          )}
+   531→        </div>
+   532→        <Button onClick={() => openCreate()} className="bg-[#16233F] hover:bg-[#1e2d4d]">
+   533→          <Plus className="w-4 h-4 ml-1" /> دسته‌بندی جدید
+   534→        </Button>
+   535→      </div>
+   536→
+   537→      <Card>
+   538→        <CardContent className="p-0">
+   539→          {loading ? (
+   540→            <div className="p-6 space-y-3">{[1,2,3,4,5].map(i => <Skeleton key={i} className="h-10 w-full" />)}</div>
+   541→          ) : categories.length === 0 ? (
+   542→            <div className="text-center py-12 text-muted-foreground">دسته‌بندی‌ای وجود ندارد</div>
+   543→          ) : (
+   544→            <div className="overflow-x-auto">
+   545→              {/* Header */}
+   546→              <div className="flex items-center border-b bg-gray-50 text-muted-foreground">
+   547→                <div className="flex-1 py-3 px-3 font-medium text-sm">نام</div>
+   548→                <div className="py-3 px-3 font-medium text-sm hidden md:block min-w-[120px]">اسلاگ</div>
+   549→                <div className="py-3 px-3 font-medium text-sm text-center min-w-[60px]">محصولات</div>
+   550→                <div className="py-3 px-3 font-medium text-sm text-center min-w-[60px]">زیردسته</div>
+   551→                <div className="py-3 px-3 font-medium text-sm text-center min-w-[60px]">نمایش</div>
+   552→                <div className="py-3 px-3 font-medium text-sm text-center min-w-[150px]">عملیات</div>
+   553→              </div>
+   554→              {renderLevel(categories, null, 0)}
+   555→            </div>
+   556→          )}
+   557→        </CardContent>
+   558→      </Card>
+   559→
+   560→      <p className="text-xs text-muted-foreground leading-6">
+   561→        برای تغییر ترتیب، دسته‌بندی‌ها را با grip (دکمه کناری) بکشید و رها کنید، یا از فلش‌های بالا/پایین استفاده کنید.
+   562→        با غیرفعال کردن نمایش یک دسته، تمام زیردسته‌های آن نیز از سایت پنهان می‌شوند (اما از دیتابیس حذف نمی‌شوند).
+   563→      </p>
+   564→
+   565→      {/* Dialog */}
+   566→      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+   567→        <DialogContent dir="rtl">
+   568→          <DialogHeader>
+   569→            <DialogTitle>{editing ? 'ویرایش دسته‌بندی' : 'دسته‌بندی جدید'}</DialogTitle>
+   570→            <DialogDescription>{editing ? 'اطلاعات را ویرایش کنید' : 'دسته‌بندی جدید ایجاد کنید'}</DialogDescription>
+   571→          </DialogHeader>
+   572→
+   573→          {/* Context banner */}
+   574→          {contextName && (
+   575→            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 flex items-center gap-2 text-sm">
+   576→              <FolderOpen className="w-4 h-4 text-amber-600 flex-shrink-0" />
+   577→              <span className="text-amber-800">
+   578→                در حال افزودن زیردسته به: <strong>{contextName}</strong>
+   579→              </span>
+   580→            </div>
+   581→          )}
+   582→          {editing && editing.parentId && (
+   583→            <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 flex items-center gap-2 text-sm">
+   584→              <FolderOpen className="w-4 h-4 text-blue-600 flex-shrink-0" />
+   585→              <span className="text-blue-800">
+   586→                ویرایش زیردسته‌ی: <strong>{resolveParentName(editing.parentId)}</strong>
+   587→              </span>
+   588→            </div>
+   589→          )}
+   590→          {!contextName && !editing && (
+   591→            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 flex items-center gap-2 text-sm">
+   592→              <FolderOpen className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+   593→              <span className="text-emerald-800">
+   594→                در حال افزودن <strong>دسته‌بندی اصلی</strong>
+   595→              </span>
+   596→            </div>
+   597→          )}
+   598→
+   599→          <div className="space-y-4 mt-2">
+   600→            {/* Category image upload */}
+   601→            <div className="space-y-2">
+   602→              <Label>تصویر / لوگو دسته‌بندی</Label>
+   603→              <div className="flex items-center gap-4">
+   604→                <div className="relative w-20 h-20 rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden flex-shrink-0">
+   605→                  {form.image ? (
+   606→                    <>
+   607→                      <img src={form.image} alt="پیش‌نمایش" className="w-full h-full object-cover" />
+   608→                      <button
+   609→                        type="button"
+   610→                        onClick={removeImage}
+   611→                        className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center hover:bg-red-600"
+   612→                        aria-label="حذف تصویر"
+   613→                      >
+   614→                        <X className="w-3 h-3" />
+   615→                      </button>
+   616→                    </>
+   617→                  ) : (
+   618→                    <FolderOpen className="w-8 h-8 text-gray-300" />
+   619→                  )}
+   620→                </div>
+   621→                <div className="flex-1 space-y-2">
+   622→                  <input
+   623→                    ref={fileInputRef}
+   624→                    type="file"
+   625→                    accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif"
+   626→                    className="hidden"
+   627→                    onChange={(e) => {
+   628→                      const f = e.target.files?.[0];
+   629→                      if (f) handleImageUpload(f);
+   630→                      e.target.value = '';
+   631→                    }}
+   632→                  />
+   633→                  <Button
+   634→                    type="button"
+   635→                    variant="outline"
+   636→                    size="sm"
+   637→                    onClick={() => fileInputRef.current?.click()}
+   638→                    disabled={uploading}
+   639→                  >
+   640→                    {uploading ? (
+   641→                      <><Loader2 className="w-4 h-4 ml-1.5 animate-spin" /> در حال آپلود...</>
+   642→                    ) : form.image ? (
+   643→                      <><ImagePlus className="w-4 h-4 ml-1.5" /> تغییر تصویر</>
+   644→                    ) : (
+   645→                      <><ImagePlus className="w-4 h-4 ml-1.5" /> آپلود تصویر</>
+   646→                    )}
+   647→                  </Button>
+   648→                  <p className="text-xs text-muted-foreground">
+   649→                    فرمت‌های مجاز: PNG, JPG, WebP, SVG, GIF (حداکثر ۲ مگابایت).
+   650→                    {!editing && form.image && ' هنگام ذخیره دسته ثبت می‌شود.'}
+   651→                  </p>
+   652→                </div>
+   653→              </div>
+   654→            </div>
+   655→
+   656→            <div className="space-y-2">
+   657→              <Label>نام *</Label>
+   658→              <Input value={form.name} onChange={e => { setForm(f => ({ ...f, name: e.target.value })); if (!editing) setForm(ff => ({ ...ff, slug: toSlug(e.target.value) })); }} />
+   659→            </div>
+   660→            <div className="space-y-2">
+   661→              <Label>اسلاگ</Label>
+   662→              <Input value={form.slug} onChange={e => setForm(f => ({ ...f, slug: e.target.value }))} dir="ltr" />
+   663→            </div>
+   664→            <div className="space-y-2">
+   665→              <Label>دسته والد</Label>
+   666→              <select
+   667→                value={form.parentId}
+   668→                onChange={e => setForm(f => ({ ...f, parentId: e.target.value }))}
+   669→                className="w-full h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+   670→              >
+   671→                <option value="">بدون والد (دسته اصلی)</option>
+   672→                {parents.filter(p => p.id !== editing?.id).map(p => (
+   673→                  <option key={p.id} value={String(p.id)}>{p.name}</option>
+   674→                ))}
+   675→              </select>
+   676→            </div>
+   677→            <div className="flex items-center justify-between rounded-lg border px-4 py-3">
+   678→              <div className="space-y-0.5">
+   679→                <Label htmlFor="cat-visible" className="cursor-pointer">نمایش در سایت</Label>
+   680→                <p className="text-xs text-muted-foreground">
+   681→                  در صورت غیرفعال کردن، این دسته و تمام زیردسته‌هایش از سایت پنهان می‌شوند.
+   682→                </p>
+   683→              </div>
+   684→              <Switch
+   685→                id="cat-visible"
+   686→                checked={form.visible}
+   687→                onCheckedChange={v => setForm(f => ({ ...f, visible: v }))}
+   688→              />
+   689→            </div>
+   690→          </div>
+   691→          <div className="flex justify-end gap-3 mt-6">
+   692→            <Button variant="outline" onClick={() => setDialogOpen(false)}>انصراف</Button>
+   693→            <Button onClick={handleSave} disabled={saving} className="bg-[#16233F] hover:bg-[#1e2d4d]">
+   694→              {saving && <Loader2 className="w-4 h-4 ml-2 animate-spin" />}
+   695→              {editing ? 'بروزرسانی' : 'ایجاد'}
+   696→            </Button>
+   697→          </div>
+   698→        </DialogContent>
+   699→      </Dialog>
+   700→
+   701→      {/* Delete */}
+   702→      <AlertDialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
+   703→        <AlertDialogContent dir="rtl">
+   704→          <AlertDialogHeader>
+   705→            <AlertDialogTitle>حذف دسته‌بندی</AlertDialogTitle>
+   706→            <AlertDialogDescription>آیا از حذف &laquo;{deleteTarget?.name}&raquo; اطمینان دارید؟</AlertDialogDescription>
+   707→          </AlertDialogHeader>
+   708→          <AlertDialogFooter>
+   709→            <AlertDialogCancel>انصراف</AlertDialogCancel>
+   710→            <AlertDialogAction onClick={handleDelete} disabled={deleting} className="bg-red-600 hover:bg-red-700">
+   711→              {deleting && <Loader2 className="w-4 h-4 ml-2 animate-spin" />} حذف
+   712→            </AlertDialogAction>
+   713→          </AlertDialogFooter>
+   714→        </AlertDialogContent>
+   715→      </AlertDialog>
+   716→    </div>
+   717→  );
+   718→}
+   719→

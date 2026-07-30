@@ -601,21 +601,21 @@ export function AdminCategories({ token }: { token: string }) {
             <div className="space-y-2">
               <Label>تصویر / لوگو دسته‌بندی</Label>
               <div className="flex items-center gap-4">
-                <div className="relative w-20 h-20 rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden flex-shrink-0">
+                <div className="relative w-40 h-40 rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden flex-shrink-0">
                   {form.image ? (
                     <>
-                      <img src={form.image} alt="پیش‌نمایش" className="w-full h-full object-cover" />
+                      <img src={form.image} alt="پیش‌نمایش" className="w-full h-full object-contain p-2" />
                       <button
                         type="button"
                         onClick={removeImage}
-                        className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center hover:bg-red-600"
+                        className="absolute top-1 right-1 w-6 h-6 rounded-full bg-red-500 text-white flex items-center justify-center hover:bg-red-600 shadow"
                         aria-label="حذف تصویر"
                       >
-                        <X className="w-3 h-3" />
+                        <X className="w-3.5 h-3.5" />
                       </button>
                     </>
                   ) : (
-                    <FolderOpen className="w-8 h-8 text-gray-300" />
+                    <FolderOpen className="w-12 h-12 text-gray-300" />
                   )}
                 </div>
                 <div className="flex-1 space-y-2">

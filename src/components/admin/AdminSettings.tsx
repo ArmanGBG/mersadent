@@ -162,22 +162,22 @@ export function AdminSettings({ token }: { token: string }) {
                 {/* Image upload */}
                 <div className="space-y-1.5">
                   <Label className="text-xs">تصویر اسلاید</Label>
-                  <div className="flex items-center gap-3">
-                    <div className="relative w-32 h-16 rounded-lg border-2 border-dashed border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden flex-shrink-0">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                    <div className="relative w-full sm:w-72 h-40 rounded-lg border-2 border-dashed border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden flex-shrink-0">
                       {imgVal ? (
                         <>
                           <img src={imgVal} alt={`پیش‌نمایش اسلاید ${i}`} className="w-full h-full object-cover" />
                           <button
                             type="button"
                             onClick={() => update(`hero_slide_${i}_image`, '')}
-                            className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center hover:bg-red-600"
+                            className="absolute top-1 right-1 w-6 h-6 rounded-full bg-red-500 text-white flex items-center justify-center hover:bg-red-600 shadow"
                             aria-label="حذف تصویر"
                           >
-                            <X className="w-3 h-3" />
+                            <X className="w-3.5 h-3.5" />
                           </button>
                         </>
                       ) : (
-                        <ImagePlus className="w-6 h-6 text-gray-300" />
+                        <ImagePlus className="w-10 h-10 text-gray-300" />
                       )}
                     </div>
                     <div className="flex-1 space-y-1.5">

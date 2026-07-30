@@ -339,3 +339,49 @@ Stage Summary:
 - Two new API endpoints: `POST /api/admin/categories/upload` and `POST /api/admin/hero/upload` (both admin-auth, sharp-optimized, with file cleanup).
 - One new public endpoint: `GET /api/hero` (returns admin-configured slides with title/subtitle/image/link).
 - The HeroSlider is now fully dynamic — it fetches slides from the API on mount and renders whatever the admin configured. Arrow/dot controls auto-hide when there's only one slide.
+
+---
+Task ID: 2
+Agent: main
+Task: Two admin UX improvements requested by user — (1) make uploaded image previews larger instead of tiny centered squares; (2) add search to brand/category selectors in the product form AND make category selection hierarchical/stepped (parent → child → grandchild).
+
+Work Log:
+- Task 1a — Category image preview (AdminCategories.tsx):
+  - Enlarged the create/edit dialog preview box from `w-20 h-20` (80×80) to `w-40 h-40` (160×160) — 4× the area.
+  - Switched `<img>` from `object-cover` to `object-contain p-2` so logos are no longer cropped (full logo visible).
+  - Scaled placeholder `FolderOpen` icon from `w-8 h-8` to `w-12 h-12` and remove button from `w-5 h-5`/`w-3 h-3` to `w-6 h-6`/`w-3.5 h-3.5` to match the bigger box.
+- Task 1b — Hero slide image preview (AdminSettings.tsx):
+  - Enlarged each slide's preview box from `w-32 h-16` (128×64) to `w-full sm:w-72 h-40` (288×160 on desktop, full-width on mobile) — ~5.6× the area, proper 16:9-ish banner aspect.
+  - Changed layout wrapper from `flex items-center` to `flex flex-col sm:flex-row sm:items-center` so the wider preview stacks above the button on narrow screens (no overflow).
+  - Scaled placeholder `ImagePlus` icon from `w-6 h-6` to `w-10 h-10` and remove button from `w-5 h-5`/`w-3 h-3` to `w-6 h-6`/`w-3.5 h-3.5`.
+- Task 2a — Created `src/components/admin/SearchableSelect.tsx`:
+  - Generic searchable combobox built on shadcn `Popover` + `Command` (cmdk).
+  - Props: options [{value,label,hint?}], value, onChange, placeholder, searchPlaceholder, emptyText, disabled, rtl.
+  - Trigger styled like the native shadcn Select (h-9, bordered, rounded-md, chevron icon) for visual consistency.
+  - Command list filters options by label via cmdk's built-in fuzzy filter; clicking an option selects it (or clears if re-clicked); Popover auto-closes on select.
+  - RTL-aware (dir="rtl" on trigger + content).
+- Task 2b — Created `src/components/admin/CategoryCascader.tsx`:
+  - Hierarchical stepped selector that renders one SearchableSelect per level.
+  - Builds a `parentId → children[]` map and `id → node` map from the flat category list (already fetched by AdminProducts via `/api/admin/categories?flat=true`).
+  - Derives the active path (root → selected node) from the current `value`; renders level 0 (roots) always, then appends a new level for each selected ancestor that has children.
+  - Selecting a node emits its id via onChange; if it has children, the next-level dropdown appears automatically (user can drill deeper or stop at any level — the selected node at any level is a valid categoryId).
+  - Clearing a level climbs back up to the parent selection.
+  - Shows a breadcrumb (e.g. "اندودانتیکس › ابزار") above the selectors and a Persian helper line explaining the stepped behavior.
+  - Each level is searchable (inherits from SearchableSelect), satisfying "حتما امکان سرچ رو بزار".
+- Task 2c — Integrated both into `AdminProducts.tsx` create/edit dialog:
+  - Replaced the flat `<Select>` for category with `<CategoryCascader>` (wrapped in a `md:col-span-2` block so the multi-level selectors have horizontal room).
+  - Replaced the flat `<Select>` for brand with `<SearchableSelect>` (options = brands mapped to {value, label}).
+  - Kept the existing `Select` import (still used for priceType + availability selects).
+
+Verification (Agent Browser, admin login admin/admin):
+- Task 1 — Category dialog: opened "دسته‌بندی جدید" dialog; DOM measurement confirmed the preview box is 160×160 (`w-40 h-40`) with `object-contain p-2` on the img.
+- Task 1 — Settings hero: navigated to تنظیمات; DOM measurement found all 4 hero slide preview boxes at 288×160 (`w-72 h-40`), each with an `<img>` rendering (hasImg: true). No overflow on the page.
+- Task 2 — Category cascader: opened "افزودن محصول جدید" dialog. Level-1 combobox opened to show 9 root categories with a search input. Typed "اند" → list filtered to matching roots. Selected "اندودانتیکس" → a new level-2 combobox ("انتخاب زیردسته") appeared with only the 4 children of اندودانتیکس (ابزار، دستگاه، رابردم و متعلقات، مواد). Selected "ابزار" → a third level combobox appeared. Breadcrumb DOM confirmed: "اندودانتیکس / ابزار".
+- Task 2 — Brand search: opened the brand combobox (long list of 40+ brands). Typed "dent" in the search → filtered to 8 matching brands (Dentium, Dentsply, Dentsply Sirona, Dentus, Diadent, Ivoclar Vivadent, Ultradent, Edenta).
+- Lint: clean (only the pre-existing unrelated error in mersadent-clone/examples/websocket/frontend.tsx).
+- Dev log: all API calls 200; no runtime/console errors.
+
+Stage Summary:
+- Image upload previews are now substantially larger: category logos preview at 160×160 (object-contain, no cropping) and hero banners preview at 288×160 (responsive, full-width on mobile). The previous tiny centered squares are gone.
+- The product form now has a searchable brand selector and a fully hierarchical, searchable category selector that reveals sub-levels progressively (parent → child → grandchild → …) with a live breadcrumb. Finding a brand or category is now fast via search, and the stepped category flow matches the user's requested UX.
+- Two new reusable components added: `SearchableSelect` (generic searchable combobox) and `CategoryCascader` (hierarchical stepped selector). Both are RTL-aware and styled to match the existing shadcn Select look.

@@ -24,6 +24,8 @@ import {
 import { toast } from 'sonner';
 import { adminFetch, formatNumber, toSlug } from '@/lib/admin-utils';
 import { parseSuperPrompt } from '@/lib/parse-super-prompt';
+import { SearchableSelect } from './SearchableSelect';
+import { CategoryCascader } from './CategoryCascader';
 
 interface AdminProduct {
   id: number; name: string; slug: string; model: string | null;
@@ -486,27 +488,26 @@ export function AdminProducts({ token }: { token: string }) {
               <Label>مدل</Label>
               <Input value={form.model} onChange={e => setForm(f => ({ ...f, model: e.target.value }))} placeholder="مدل محصول" />
             </div>
-            <div className="space-y-2">
+            <div className="space-y-2 md:col-span-2">
               <Label>دسته‌بندی *</Label>
-              <Select value={form.categoryId} onValueChange={v => setForm(f => ({ ...f, categoryId: v }))}>
-                <SelectTrigger><SelectValue placeholder="انتخاب دسته‌بندی" /></SelectTrigger>
-                <SelectContent>
-                  {categories.map(c => (
-                    <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <CategoryCascader
+                categories={categories}
+                value={form.categoryId}
+                onChange={v => setForm(f => ({ ...f, categoryId: v }))}
+                searchPlaceholder="جستجوی نام دسته..."
+                emptyText="دسته‌ای یافت نشد"
+              />
             </div>
             <div className="space-y-2">
               <Label>برند *</Label>
-              <Select value={form.brandId} onValueChange={v => setForm(f => ({ ...f, brandId: v }))}>
-                <SelectTrigger><SelectValue placeholder="انتخاب برند" /></SelectTrigger>
-                <SelectContent>
-                  {brands.map(b => (
-                    <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                options={brands.map(b => ({ value: String(b.id), label: b.name }))}
+                value={form.brandId}
+                onChange={v => setForm(f => ({ ...f, brandId: v }))}
+                placeholder="انتخاب برند"
+                searchPlaceholder="جستجوی نام برند..."
+                emptyText="برندی یافت نشد"
+              />
             </div>
             <div className="space-y-2">
               <Label>قیمت (تومان)</Label>
