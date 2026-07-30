@@ -1,0 +1,842 @@
+     1→'use client';
+     2→
+     3→import { useState, useEffect, useCallback } from 'react';
+     4→import { Button } from '@/components/ui/button';
+     5→import { Input } from '@/components/ui/input';
+     6→import { Label } from '@/components/ui/label';
+     7→import { Badge } from '@/components/ui/badge';
+     8→import { Card, CardContent } from '@/components/ui/card';
+     9→import { Skeleton } from '@/components/ui/skeleton';
+    10→import { Switch } from '@/components/ui/switch';
+    11→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+    12→import { Textarea } from '@/components/ui/textarea';
+    13→import { Separator } from '@/components/ui/separator';
+    14→import {
+    15→  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+    16→} from '@/components/ui/dialog';
+    17→import {
+    18→  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    19→  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+    20→} from '@/components/ui/alert-dialog';
+    21→import {
+    22→  Search, Plus, Pencil, Trash2, Upload, X, ChevronLeft, ChevronRight, ImageIcon, Loader2, Wand2, FileText, CheckCircle2, AlertTriangle
+    23→} from 'lucide-react';
+    24→import { toast } from 'sonner';
+    25→import { adminFetch, formatNumber, toSlug } from '@/lib/admin-utils';
+    26→import { parseSuperPrompt } from '@/lib/parse-super-prompt';
+    27→
+    28→interface AdminProduct {
+    29→  id: number; name: string; slug: string; model: string | null;
+    30→  price: number | null; priceType: string; availability: string;
+    31→  specs: string | null; featured: boolean; visible: boolean; order: number; discountPercent: number;
+    32→  description: string | null;
+    33→  strengths: string | null;
+    34→  weaknesses: string | null;
+    35→  metaTitle: string | null;
+    36→  metaDescription: string | null;
+    37→  keywords: string | null;
+    38→  sku: string | null;
+    39→  country: string | null;
+    40→  warranty: string | null;
+    41→  weight: string | null;
+    42→  lowStock: number;
+    43→  category: { id: number; name: string; slug: string };
+    44→  brand: { id: number; name: string; slug: string };
+    45→  _count: { images: number };
+    46→  tags: { tagId: number; tag: { id: number; name: string; slug: string; type: string } }[];
+    47→}
+    48→
+    49→interface SimpleCategory { id: number; name: string; slug: string; parentId: number | null; }
+    50→interface SimpleBrand { id: number; name: string; slug: string; }
+    51→
+    52→interface SimpleTag { id: number; name: string; slug: string; type: string; }
+    53→
+    54→interface ProductForm {
+    55→  name: string; slug: string; model: string; price: string; priceType: string;
+    56→  availability: string; specs: string; categoryId: string; brandId: string;
+    57→  featured: boolean; visible: boolean; discountPercent: string;
+    58→  description: string; strengths: string[]; weaknesses: string[];
+    59→  metaTitle: string; metaDescription: string; keywords: string;
+    60→  sku: string; country: string; warranty: string; weight: string; lowStock: string;
+    61→  tagIds: number[];
+    62→}
+    63→
+    64→const emptyProduct: ProductForm = {
+    65→  name: '', slug: '', model: '', price: '', priceType: 'fixed', availability: 'in_stock',
+    66→  specs: '', categoryId: '', brandId: '', featured: false, visible: true, discountPercent: '0',
+    67→  description: '', strengths: [], weaknesses: [], metaTitle: '', metaDescription: '', keywords: '',
+    68→  sku: '', country: '', warranty: '', weight: '', lowStock: '0', tagIds: [],
+    69→};
+    70→
+    71→export function AdminProducts({ token }: { token: string }) {
+    72→  const [products, setProducts] = useState<AdminProduct[]>([]);
+    73→  const [total, setTotal] = useState(0);
+    74→  const [page, setPage] = useState(1);
+    75→  const [q, setQ] = useState('');
+    76→  const [loading, setLoading] = useState(true);
+    77→  const [searchTimeout, setSearchTimeout] = useState<NodeJS.Timeout | null>(null);
+    78→
+    79→  const [categories, setCategories] = useState<SimpleCategory[]>([]);
+    80→  const [brands, setBrands] = useState<SimpleBrand[]>([]);
+    81→  const [allTags, setAllTags] = useState<SimpleTag[]>([]);
+    82→
+    83→  // Dialog state
+    84→  const [dialogOpen, setDialogOpen] = useState(false);
+    85→  const [editing, setEditing] = useState<AdminProduct | null>(null);
+    86→  const [form, setForm] = useState<ProductForm>({ ...emptyProduct });
+    87→  const [saving, setSaving] = useState(false);
+    88→
+    89→  // Super-prompt state
+    90→  const [superPromptText, setSuperPromptText] = useState('');
+    91→  const [parsing, setParsing] = useState(false);
+    92→
+    93→  // Delete state
+    94→  const [deleteTarget, setDeleteTarget] = useState<AdminProduct | null>(null);
+    95→  const [deleting, setDeleting] = useState(false);
+    96→
+    97→  // Image dialog
+    98→  const [imageProduct, setImageProduct] = useState<AdminProduct | null>(null);
+    99→  const [images, setImages] = useState<{ id: number; url: string; alt: string | null; order: number }[]>([]);
+   100→  const [uploading, setUploading] = useState(false);
+   101→
+   102→  const limit = 20;
+   103→
+   104→  const loadProducts = useCallback(async () => {
+   105→    setLoading(true);
+   106→    try {
+   107→      const res = await adminFetch(token, `/api/admin/products?page=${page}&limit=${limit}&q=${encodeURIComponent(q)}`);
+   108→      const data = await res.json();
+   109→      if (data.error) { toast.error(data.error); return; }
+   110→      setProducts(data.products);
+   111→      setTotal(data.total);
+   112→    } catch { toast.error('خطا در دریافت محصولات'); }
+   113→    finally { setLoading(false); }
+   114→  }, [token, page, q]);
+   115→
+   116→  const loadLookups = useCallback(async () => {
+   117→    try {
+   118→      const [catRes, brandRes, tagsRes] = await Promise.all([
+   119→        adminFetch(token, '/api/admin/categories?flat=true'),
+   120→        adminFetch(token, '/api/admin/brands'),
+   121→        fetch('/api/tags'),
+   122→      ]);
+   123→      const catData = await catRes.json();
+   124→      const brandData = await brandRes.json();
+   125→      const tagsData = await tagsRes.json();
+   126→      if (catData.categories) setCategories(catData.categories);
+   127→      if (brandData.brands) setBrands(brandData.brands);
+   128→      if (Array.isArray(tagsData)) setAllTags(tagsData);
+   129→    } catch { /* ignore */ }
+   130→  }, [token]);
+   131→
+   132→  useEffect(() => { loadLookups(); }, [loadLookups]);
+   133→  useEffect(() => { loadProducts(); }, [loadProducts]);
+   134→
+   135→  const handleSearch = (value: string) => {
+   136→    setQ(value);
+   137→    setPage(1);
+   138→    if (searchTimeout) clearTimeout(searchTimeout);
+   139→    setSearchTimeout(setTimeout(() => {}, 100));
+   140→  };
+   141→
+   142→  const openCreate = () => {
+   143→    setEditing(null);
+   144→    setForm({ ...emptyProduct });
+   145→    setSuperPromptText('');
+   146→    setDialogOpen(true);
+   147→  };
+   148→
+   149→  const openEdit = (p: AdminProduct) => {
+   150→    setEditing(p);
+   151→    setForm({
+   152→      name: p.name,
+   153→      slug: p.slug,
+   154→      model: p.model || '',
+   155→      price: p.price !== null ? String(p.price) : '',
+   156→      priceType: p.priceType,
+   157→      availability: p.availability,
+   158→      specs: p.specs || '',
+   159→      categoryId: String(p.category.id),
+   160→      brandId: String(p.brand.id),
+   161→      featured: p.featured,
+   162→      visible: p.visible !== false,
+   163→      discountPercent: String(p.discountPercent ?? 0),
+   164→      description: p.description || '',
+   165→      strengths: p.strengths ? (() => { try { return JSON.parse(p.strengths); } catch { return []; } })() : [],
+   166→      weaknesses: p.weaknesses ? (() => { try { return JSON.parse(p.weaknesses); } catch { return []; } })() : [],
+   167→      metaTitle: p.metaTitle || '',
+   168→      metaDescription: p.metaDescription || '',
+   169→      keywords: p.keywords || '',
+   170→      sku: p.sku || '',
+   171→      country: p.country || '',
+   172→      warranty: p.warranty || '',
+   173→      weight: p.weight || '',
+   174→      lowStock: String(p.lowStock ?? 0),
+   175→      tagIds: (p.tags || []).map((pt) => pt.tag.id),
+   176→    });
+   177→    setSuperPromptText('');
+   178→    setDialogOpen(true);
+   179→  };
+   180→
+   181→  const handleSave = async () => {
+   182→    if (!form.name || !form.categoryId || !form.brandId) {
+   183→      toast.error('نام، دسته‌بندی و برند الزامی هستند');
+   184→      return;
+   185→    }
+   186→    setSaving(true);
+   187→    try {
+   188→      const body: Record<string, unknown> = {
+   189→        name: form.name,
+   190→        slug: form.slug || toSlug(form.name),
+   191→        model: form.model || null,
+   192→        price: form.price === '' ? null : Number(form.price),
+   193→        discountPercent: Number(form.discountPercent) || 0,
+   194→        priceType: form.priceType,
+   195→        availability: form.availability,
+   196→        specs: form.specs || null,
+   197→        categoryId: Number(form.categoryId),
+   198→        brandId: Number(form.brandId),
+   199→        featured: form.featured,
+   200→        visible: form.visible,
+   201→        description: form.description || null,
+   202→        strengths: form.strengths.length > 0 ? JSON.stringify(form.strengths) : null,
+   203→        weaknesses: form.weaknesses.length > 0 ? JSON.stringify(form.weaknesses) : null,
+   204→        metaTitle: form.metaTitle || null,
+   205→        metaDescription: form.metaDescription || null,
+   206→        keywords: form.keywords || null,
+   207→        sku: form.sku || null,
+   208→        country: form.country || null,
+   209→        warranty: form.warranty || null,
+   210→        weight: form.weight || null,
+   211→        lowStock: form.lowStock || '0',
+   212→        tagIds: form.tagIds,
+   213→      };
+   214→
+   215→      if (editing) {
+   216→        body.id = editing.id;
+   217→        const res = await adminFetch(token, '/api/admin/products', { method: 'PUT', body: JSON.stringify(body) });
+   218→        const data = await res.json();
+   219→        if (data.error) { toast.error(data.error); return; }
+   220→        toast.success('محصول بروزرسانی شد');
+   221→      } else {
+   222→        const res = await adminFetch(token, '/api/admin/products', { method: 'POST', body: JSON.stringify(body) });
+   223→        const data = await res.json();
+   224→        if (data.error) { toast.error(data.error); return; }
+   225→        toast.success('محصول ایجاد شد');
+   226→      }
+   227→      setDialogOpen(false);
+   228→      loadProducts();
+   229→    } catch { toast.error('خطا در ذخیره محصول'); }
+   230→    finally { setSaving(false); }
+   231→  };
+   232→
+   233→  const handleParseSuperPrompt = () => {
+   234→    if (!superPromptText.trim()) {
+   235→      toast.error('ابتدا متن خروجی را وارد کنید');
+   236→      return;
+   237→    }
+   238→    setParsing(true);
+   239→    // Use setTimeout to allow UI to update before synchronous parse
+   240→    setTimeout(() => {
+   241→      try {
+   242→        const parsed = parseSuperPrompt(superPromptText);
+   243→        setForm(f => ({
+   244→          ...f,
+   245→          description: parsed.description || f.description,
+   246→          strengths: parsed.strengths.length > 0 ? parsed.strengths : f.strengths,
+   247→          weaknesses: parsed.weaknesses.length > 0 ? parsed.weaknesses : f.weaknesses,
+   248→          metaTitle: parsed.metaTitle || f.metaTitle,
+   249→          metaDescription: parsed.metaDescription || f.metaDescription,
+   250→          keywords: parsed.keywords || f.keywords,
+   251→        }));
+   252→        const foundCount = [
+   253→          parsed.description ? 'توضیحات' : '',
+   254→          parsed.strengths.length ? `${parsed.strengths.length} نقطه قوت` : '',
+   255→          parsed.weaknesses.length ? `${parsed.weaknesses.length} نقطه ضعف` : '',
+   256→        ].filter(Boolean);
+   257→        if (foundCount.length > 0) {
+   258→          toast.success(`تحلیل موفق: ${foundCount.join('، ')}`);
+   259→        } else {
+   260→          toast.warning('متن پردازش شد اما بخش مشخصی یافت نشد');
+   261→        }
+   262→      } catch (e) {
+   263→        toast.error('خطا در تحلیل متن');
+   264→        console.error('Parse error:', e);
+   265→      } finally {
+   266→        setParsing(false);
+   267→      }
+   268→    }, 50);
+   269→  };
+   270→
+   271→  const removeStrength = (idx: number) => {
+   272→    setForm(f => ({ ...f, strengths: f.strengths.filter((_, i) => i !== idx) }));
+   273→  };
+   274→
+   275→  const removeWeakness = (idx: number) => {
+   276→    setForm(f => ({ ...f, weaknesses: f.weaknesses.filter((_, i) => i !== idx) }));
+   277→  };
+   278→
+   279→  const handleDelete = async () => {
+   280→    if (!deleteTarget) return;
+   281→    setDeleting(true);
+   282→    try {
+   283→      const res = await adminFetch(token, `/api/admin/products?id=${deleteTarget.id}`, { method: 'DELETE' });
+   284→      const data = await res.json();
+   285→      if (data.error) { toast.error(data.error); return; }
+   286→      toast.success('محصول حذف شد');
+   287→      setDeleteTarget(null);
+   288→      loadProducts();
+   289→    } catch { toast.error('خطا در حذف محصول'); }
+   290→    finally { setDeleting(false); }
+   291→  };
+   292→
+   293→  const openImages = async (p: AdminProduct) => {
+   294→    setImageProduct(p);
+   295→    try {
+   296→      const res = await adminFetch(token, `/api/admin/products/${p.id}/images`);
+   297→      const data = await res.json();
+   298→      setImages(data.images || []);
+   299→    } catch { setImages([]); }
+   300→  };
+   301→
+   302→  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+   303→    const file = e.target.files?.[0];
+   304→    if (!file || !imageProduct) return;
+   305→    setUploading(true);
+   306→    try {
+   307→      const fd = new FormData();
+   308→      fd.append('file', file);
+   309→      fd.append('productId', String(imageProduct.id));
+   310→      const res = await fetch('/api/admin/upload', { method: 'POST', body: fd });
+   311→      const data = await res.json();
+   312→      if (data.error) { toast.error(data.error); return; }
+   313→      toast.success('تصویر آپلود شد');
+   314→      openImages(imageProduct);
+   315→    } catch { toast.error('خطا در آپلود'); }
+   316→    finally { setUploading(false); e.target.value = ''; }
+   317→  };
+   318→
+   319→  const handleDeleteImage = async (imageId: number) => {
+   320→    if (!imageProduct) return;
+   321→    try {
+   322→      const res = await adminFetch(token, `/api/admin/products/${imageProduct.id}/images?imageId=${imageId}`, { method: 'DELETE' });
+   323→      const data = await res.json();
+   324→      if (data.error) { toast.error(data.error); return; }
+   325→      toast.success('تصویر حذف شد');
+   326→      setImages(prev => prev.filter(i => i.id !== imageId));
+   327→    } catch { toast.error('خطا در حذف تصویر'); }
+   328→  };
+   329→
+   330→  const toggleFeatured = async (p: AdminProduct) => {
+   331→    try {
+   332→      const res = await adminFetch(token, '/api/admin/products', {
+   333→        method: 'PUT',
+   334→        body: JSON.stringify({ id: p.id, name: p.name, featured: !p.featured }),
+   335→      });
+   336→      const data = await res.json();
+   337→      if (data.error) { toast.error(data.error); return; }
+   338→      toast.success(p.featured ? 'از ویژه‌ها حذف شد' : 'به ویژه‌ها اضافه شد');
+   339→      loadProducts();
+   340→    } catch { toast.error('خطا'); }
+   341→  };
+   342→
+   343→  const toggleVisible = async (p: AdminProduct) => {
+   344→    const newVal = !(p.visible !== false);
+   345→    // Optimistic
+   346→    setProducts(prev => prev.map(x => x.id === p.id ? { ...x, visible: newVal } : x));
+   347→    try {
+   348→      const res = await adminFetch(token, '/api/admin/products', {
+   349→        method: 'PUT',
+   350→        body: JSON.stringify({ id: p.id, name: p.name, visible: newVal }),
+   351→      });
+   352→      const data = await res.json();
+   353→      if (data.error) {
+   354→        toast.error(data.error);
+   355→        loadProducts();
+   356→        return;
+   357→      }
+   358→      toast.success(newVal ? 'نمایش داده شد' : 'از نمایش خارج شد');
+   359→    } catch {
+   360→      toast.error('خطا');
+   361→      loadProducts();
+   362→    }
+   363→  };
+   364→
+   365→  const availabilityLabel = (a: string) => {
+   366→    if (a === 'in_stock') return <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">موجود</Badge>;
+   367→    if (a === 'out_of_stock') return <Badge className="bg-red-100 text-red-700 hover:bg-red-100">ناموجود</Badge>;
+   368→    return <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">تماس بگیرید</Badge>;
+   369→  };
+   370→
+   371→  const totalPages = Math.ceil(total / limit);
+   372→
+   373→  return (
+   374→    <div className="space-y-4" dir="rtl">
+   375→      {/* Toolbar */}
+   376→      <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+   377→        <div className="relative flex-1 max-w-md">
+   378→          <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+   379→          <Input
+   380→            placeholder="جستجوی محصول..."
+   381→            value={q}
+   382→            onChange={e => handleSearch(e.target.value)}
+   383→            className="pr-10"
+   384→          />
+   385→        </div>
+   386→        <Button onClick={openCreate} className="bg-[#16233F] hover:bg-[#1e2d4d]">
+   387→          <Plus className="w-4 h-4 ml-1" /> افزودن محصول
+   388→        </Button>
+   389→      </div>
+   390→
+   391→      {/* Table */}
+   392→      <Card>
+   393→        <CardContent className="p-0">
+   394→          {loading ? (
+   395→            <div className="p-6 space-y-3">
+   396→              {[1,2,3,4,5].map(i => <Skeleton key={i} className="h-12 w-full" />)}
+   397→            </div>
+   398→          ) : (
+   399→            <div className="overflow-x-auto">
+   400→              <table className="w-full text-sm">
+   401→                <thead>
+   402→                  <tr className="border-b bg-gray-50 text-muted-foreground">
+   403→                    <th className="text-right py-3 px-3 font-medium">شناسه</th>
+   404→                    <th className="text-right py-3 px-3 font-medium">نام محصول</th>
+   405→                    <th className="text-right py-3 px-3 font-medium hidden md:table-cell">برند</th>
+   406→                    <th className="text-right py-3 px-3 font-medium hidden lg:table-cell">دسته‌بندی</th>
+   407→                    <th className="text-right py-3 px-3 font-medium">قیمت</th>
+   408→                    <th className="text-right py-3 px-3 font-medium">وضعیت</th>
+   409→                    <th className="text-center py-3 px-3 font-medium">تصاویر</th>
+   410→                    <th className="text-center py-3 px-3 font-medium">ویژه</th>
+   411→                    <th className="text-center py-3 px-3 font-medium">نمایش</th>
+   412→                    <th className="text-center py-3 px-3 font-medium">عملیات</th>
+   413→                  </tr>
+   414→                </thead>
+   415→                <tbody>
+   416→                  {products.length === 0 && (
+   417→                    <tr><td colSpan={10} className="text-center py-12 text-muted-foreground">محصولی یافت نشد</td></tr>
+   418→                  )}
+   419→                  {products.map(p => {
+   420→                    const isVisible = p.visible !== false;
+   421→                    return (
+   422→                    <tr key={p.id} className={`border-b last:border-0 hover:bg-gray-50/50 ${!isVisible ? 'bg-gray-50/60' : ''}`}>
+   423→                      <td className="py-2.5 px-3 text-muted-foreground">#{p.id}</td>
+   424→                      <td className={`py-2.5 px-3 font-medium max-w-[200px] truncate ${!isVisible ? 'text-gray-400' : ''}`}>{p.name}{!isVisible && <span className="block text-[10px] text-gray-400">پنهان</span>}</td>
+   425→                      <td className="py-2.5 px-3 hidden md:table-cell text-gray-600">{p.brand.name}</td>
+   426→                      <td className="py-2.5 px-3 hidden lg:table-cell text-gray-600">{p.category.name}</td>
+   427→                      <td className="py-2.5 px-3">
+   428→                        {p.price ? formatNumber(p.price) + ' ت' : <span className="text-muted-foreground">تماس</span>}
+   429→                      </td>
+   430→                      <td className="py-2.5 px-3">{availabilityLabel(p.availability)}</td>
+   431→                      <td className="py-2.5 px-3 text-center">
+   432→                        <button onClick={() => openImages(p)} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-[#2FC4C9] transition-colors">
+   433→                          <ImageIcon className="w-3.5 h-3.5" /> {p._count.images}
+   434→                        </button>
+   435→                      </td>
+   436→                      <td className="py-2.5 px-3 text-center">
+   437→                        <Switch checked={p.featured} onCheckedChange={() => toggleFeatured(p)} className="mx-auto" />
+   438→                      </td>
+   439→                      <td className="py-2.5 px-3 text-center">
+   440→                        <Switch checked={isVisible} onCheckedChange={() => toggleVisible(p)} className="mx-auto" />
+   441→                      </td>
+   442→                      <td className="py-2.5 px-3 text-center">
+   443→                        <div className="flex items-center justify-center gap-1">
+   444→                          <button onClick={() => openEdit(p)} className="p-1.5 rounded-md hover:bg-blue-50 text-blue-600 transition-colors">
+   445→                            <Pencil className="w-4 h-4" />
+   446→                          </button>
+   447→                          <button onClick={() => setDeleteTarget(p)} className="p-1.5 rounded-md hover:bg-red-50 text-red-500 transition-colors">
+   448→                            <Trash2 className="w-4 h-4" />
+   449→                          </button>
+   450→                        </div>
+   451→                      </td>
+   452→                    </tr>
+   453→                    );
+   454→                  })}
+   455→                </tbody>
+   456→              </table>
+   457→            </div>
+   458→          )}
+   459→        </CardContent>
+   460→      </Card>
+   461→
+   462→      {/* Pagination */}
+   463→      {totalPages > 1 && (
+   464→        <div className="flex items-center justify-center gap-2">
+   465→          <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>
+   466→            <ChevronRight className="w-4 h-4" />
+   467→          </Button>
+   468→          <span className="text-sm text-muted-foreground">
+   469→            صفحه {page} از {totalPages}
+   470→          </span>
+   471→          <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>
+   472→            <ChevronLeft className="w-4 h-4" />
+   473→          </Button>
+   474→        </div>
+   475→      )}
+   476→
+   477→      {/* Create/Edit Dialog */}
+   478→      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+   479→        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" dir="rtl">
+   480→          <DialogHeader>
+   481→            <DialogTitle>{editing ? 'ویرایش محصول' : 'افزودن محصول جدید'}</DialogTitle>
+   482→            <DialogDescription>اطلاعات محصول را وارد کنید</DialogDescription>
+   483→          </DialogHeader>
+   484→          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+   485→            <div className="space-y-2 md:col-span-2">
+   486→              <Label>نام محصول *</Label>
+   487→              <Input
+   488→                value={form.name}
+   489→                onChange={e => { setForm(f => ({ ...f, name: e.target.value })); if (!editing) setForm(ff => ({ ...ff, slug: toSlug(e.target.value) })); }}
+   490→                placeholder="نام محصول"
+   491→              />
+   492→            </div>
+   493→            <div className="space-y-2">
+   494→              <Label>اسلاگ (slug)</Label>
+   495→              <Input value={form.slug} onChange={e => setForm(f => ({ ...f, slug: e.target.value }))} placeholder="auto-generated" dir="ltr" />
+   496→            </div>
+   497→            <div className="space-y-2">
+   498→              <Label>مدل</Label>
+   499→              <Input value={form.model} onChange={e => setForm(f => ({ ...f, model: e.target.value }))} placeholder="مدل محصول" />
+   500→            </div>
+   501→            <div className="space-y-2">
+   502→              <Label>دسته‌بندی *</Label>
+   503→              <Select value={form.categoryId} onValueChange={v => setForm(f => ({ ...f, categoryId: v }))}>
+   504→                <SelectTrigger><SelectValue placeholder="انتخاب دسته‌بندی" /></SelectTrigger>
+   505→                <SelectContent>
+   506→                  {categories.map(c => (
+   507→                    <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+   508→                  ))}
+   509→                </SelectContent>
+   510→              </Select>
+   511→            </div>
+   512→            <div className="space-y-2">
+   513→              <Label>برند *</Label>
+   514→              <Select value={form.brandId} onValueChange={v => setForm(f => ({ ...f, brandId: v }))}>
+   515→                <SelectTrigger><SelectValue placeholder="انتخاب برند" /></SelectTrigger>
+   516→                <SelectContent>
+   517→                  {brands.map(b => (
+   518→                    <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>
+   519→                  ))}
+   520→                </SelectContent>
+   521→              </Select>
+   522→            </div>
+   523→            <div className="space-y-2">
+   524→              <Label>قیمت (تومان)</Label>
+   525→              <Input
+   526→                type="number"
+   527→                value={form.price}
+   528→                onChange={e => setForm(f => ({ ...f, price: e.target.value }))}
+   529→                placeholder="خالی = تماس بگیرید"
+   530→                dir="ltr"
+   531→              />
+   532→            </div>
+   533→            <div className="space-y-2">
+   534→              <Label>درصد تخفیف (۰ تا ۱۰۰)</Label>
+   535→              <Input
+   536→                type="number"
+   537→                min="0"
+   538→                max="100"
+   539→                step="0.1"
+   540→                value={form.discountPercent}
+   541→                onChange={e => setForm(f => ({ ...f, discountPercent: e.target.value }))}
+   542→                placeholder="0"
+   543→                dir="ltr"
+   544→              />
+   545→            </div>
+   546→            <div className="space-y-2">
+   547→              <Label>نوع قیمت</Label>
+   548→              <Select value={form.priceType} onValueChange={v => setForm(f => ({ ...f, priceType: v }))}>
+   549→                <SelectTrigger><SelectValue /></SelectTrigger>
+   550→                <SelectContent>
+   551→                  <SelectItem value="fixed">قیمت ثابت</SelectItem>
+   552→                  <SelectItem value="call">تماس بگیرید</SelectItem>
+   553→                </SelectContent>
+   554→              </Select>
+   555→            </div>
+   556→            <div className="space-y-2">
+   557→              <Label>موجودی</Label>
+   558→              <Select value={form.availability} onValueChange={v => setForm(f => ({ ...f, availability: v }))}>
+   559→                <SelectTrigger><SelectValue /></SelectTrigger>
+   560→                <SelectContent>
+   561→                  <SelectItem value="in_stock">موجود</SelectItem>
+   562→                  <SelectItem value="out_of_stock">ناموجود</SelectItem>
+   563→                  <SelectItem value="call">تماس بگیرید</SelectItem>
+   564→                </SelectContent>
+   565→              </Select>
+   566→            </div>
+   567→            <div className="flex items-center gap-2 pt-6">
+   568→              <Switch checked={form.featured} onCheckedChange={v => setForm(f => ({ ...f, featured: v }))} />
+   569→              <Label>محصول ویژه</Label>
+   570→            </div>
+   571→            <div className="flex items-center gap-2">
+   572→              <Switch checked={form.visible} onCheckedChange={v => setForm(f => ({ ...f, visible: v }))} />
+   573→              <Label>نمایش در سایت</Label>
+   574→            </div>
+   575→            <div className="space-y-2">
+   576→              <Label>کد محصول (SKU)</Label>
+   577→              <Input value={form.sku} onChange={e => setForm(f => ({ ...f, sku: e.target.value }))} placeholder="مثلاً WD-EP-100" dir="ltr" />
+   578→            </div>
+   579→            <div className="space-y-2">
+   580→              <Label>کشور سازنده</Label>
+   581→              <Input value={form.country} onChange={e => setForm(f => ({ ...f, country: e.target.value }))} placeholder="مثلاً چین، ایران" />
+   582→            </div>
+   583→            <div className="space-y-2">
+   584→              <Label>گارانتی</Label>
+   585→              <Input value={form.warranty} onChange={e => setForm(f => ({ ...f, warranty: e.target.value }))} placeholder="مثلاً ۱ سال گارانتی" />
+   586→            </div>
+   587→            <div className="space-y-2">
+   588→              <Label>وزن</Label>
+   589→              <Input value={form.weight} onChange={e => setForm(f => ({ ...f, weight: e.target.value }))} placeholder="مثلاً ۱۰۶ گرم" dir="ltr" />
+   590→            </div>
+   591→            <div className="space-y-2">
+   592→              <Label>موجودی کم (<span className="text-red-500">۰ = غیرفعال</span>)</Label>
+   593→              <Input
+   594→                type="number"
+   595→                min="0"
+   596→                value={form.lowStock}
+   597→                onChange={e => setForm(f => ({ ...f, lowStock: e.target.value }))}
+   598→                placeholder="0"
+   599→                dir="ltr"
+   600→              />
+   601→              <p className="text-xs text-muted-foreground">اگر بیشتر از ۰ باشد، نشان «فقط N عدد مانده» نمایش داده می‌شود</p>
+   602→            </div>
+   603→            {/* ─── Tags Section ─── */}
+   604→            <div className="md:col-span-2 space-y-2">
+   605→              <Separator className="mb-3" />
+   606→              <p className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wide">تگ‌ها</p>
+   607→              <div className="flex flex-wrap gap-2 p-3 rounded-lg border bg-gray-50/50 max-h-40 overflow-y-auto">
+   608→                {allTags.filter(t => form.tagIds.includes(t.id)).map(t => (
+   609→                  <Badge key={t.id} variant="secondary" className="bg-[#2FC4C9]/10 text-[#2FC4C9] border-[#2FC4C9]/30 pr-1 pl-2 py-1.5 gap-1 cursor-pointer hover:bg-red-50 hover:text-red-600 hover:border-red-200" onClick={() => setForm(f => ({ ...f, tagIds: f.tagIds.filter(id => id !== t.id) }))}>
+   610→                    <span className="text-xs">{t.name}</span>
+   611→                    <X className="w-3 h-3" />
+   612→                  </Badge>
+   613→                ))}
+   614→                {form.tagIds.length === 0 && <p className="text-xs text-muted-foreground">تگی انتخاب نشده</p>}
+   615→              </div>
+   616→              {allTags.filter(t => !form.tagIds.includes(t.id)).length > 0 && (
+   617→                <Select onValueChange={v => { if (!form.tagIds.includes(Number(v))) setForm(f => ({ ...f, tagIds: [...f.tagIds, Number(v)] })); }}>
+   618→                  <SelectTrigger className="w-full"><SelectValue placeholder="+ افزودن تگ" /></SelectTrigger>
+   619→                  <SelectContent>
+   620→                    {['general', 'feature', 'badge', 'consumable'].map(type => {
+   621→                      const typeTags = allTags.filter(t => t.type === type && !form.tagIds.includes(t.id));
+   622→                      if (typeTags.length === 0) return null;
+   623→                      return (
+   624→                        <div key={type}>
+   625→                          <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">{type === 'general' ? 'عمومی' : type === 'feature' ? 'ویژگی' : type === 'badge' ? 'نشان' : 'نوع'}</div>
+   626→                          {typeTags.map(t => (
+   627→                            <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>
+   628→                          ))}
+   629→                        </div>
+   630→                      );
+   631→                    })}
+   632→                  </SelectContent>
+   633→                </Select>
+   634→              )}
+   635→            </div>
+   636→            <div className="space-y-2 md:col-span-2">
+   637→              <Label>مشخصات (JSON)</Label>
+   638→              <Textarea
+   639→                value={form.specs}
+   640→                onChange={e => setForm(f => ({ ...f, specs: e.target.value }))}
+   641→                placeholder='[{"key":"وزن","value":"2 کیلوگرم"}]'
+   642→                rows={4}
+   643→                dir="ltr"
+   644→                className="font-mono text-sm"
+   645→              />
+   646→            </div>
+   647→
+   648→            {/* ─── Super-Prompt Section ─── */}
+   649→            <div className="md:col-span-2 mt-2">
+   650→              <Separator className="mb-4" />
+   651→              <div className="rounded-xl border-2 border-dashed border-[#2FC4C9]/30 bg-[#2FC4C9]/5 p-4 space-y-3">
+   652→                <div className="flex items-center gap-2 text-[#16233F] font-semibold text-sm">
+   653→                  <FileText className="w-4 h-4 text-[#2FC4C9]" />
+   654→                  📋 خروجی سوپرپرامپت
+   655→                </div>
+   656→                <Textarea
+   657→                  value={superPromptText}
+   658→                  onChange={e => setSuperPromptText(e.target.value)}
+   659→                  placeholder="متن خروجی AI را اینجا قرار دهید..."
+   660→                  rows={6}
+   661→                  className="text-sm resize-y"
+   662→                />
+   663→                <Button
+   664→                  type="button"
+   665→                  onClick={handleParseSuperPrompt}
+   666→                  disabled={parsing || !superPromptText.trim()}
+   667→                  className="w-full bg-[#2FC4C9] hover:bg-[#2FC4C9]/90 text-white"
+   668→                >
+   669→                  {parsing ? (
+   670→                    <Loader2 className="w-4 h-4 ml-2 animate-spin" />
+   671→                  ) : (
+   672→                    <Wand2 className="w-4 h-4 ml-2" />
+   673→                  )}
+   674→                  تحلیل و پر کردن خودکار 🪄
+   675→                </Button>
+   676→              </div>
+   677→            </div>
+   678→
+   679→            {/* ─── Parsed Fields: Strengths ─── */}
+   680→            <div className="md:col-span-2 space-y-2">
+   681→              <Label className="flex items-center gap-1.5">
+   682→                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+   683→                نقاط قوت
+   684→              </Label>
+   685→              {form.strengths.length > 0 ? (
+   686→                <div className="flex flex-wrap gap-2">
+   687→                  {form.strengths.map((s, idx) => (
+   688→                    <Badge key={idx} variant="secondary" className="bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 pr-1 pl-2 py-1.5 gap-1">
+   689→                      <span className="text-xs">{s}</span>
+   690→                      <button onClick={() => removeStrength(idx)} className="mr-1 hover:text-red-500 transition-colors">
+   691→                        <X className="w-3 h-3" />
+   692→                      </button>
+   693→                    </Badge>
+   694→                  ))}
+   695→                </div>
+   696→              ) : (
+   697→                <p className="text-xs text-muted-foreground">هنوز نقطه‌ای اضافه نشده — از سوپرپرامپت استفاده کنید</p>
+   698→              )}
+   699→            </div>
+   700→
+   701→            {/* ─── Parsed Fields: Weaknesses ─── */}
+   702→            <div className="md:col-span-2 space-y-2">
+   703→              <Label className="flex items-center gap-1.5">
+   704→                <AlertTriangle className="w-4 h-4 text-amber-600" />
+   705→                نقاط ضعف
+   706→              </Label>
+   707→              {form.weaknesses.length > 0 ? (
+   708→                <div className="flex flex-wrap gap-2">
+   709→                  {form.weaknesses.map((w, idx) => (
+   710→                    <Badge key={idx} variant="secondary" className="bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100 pr-1 pl-2 py-1.5 gap-1">
+   711→                      <span className="text-xs">{w}</span>
+   712→                      <button onClick={() => removeWeakness(idx)} className="mr-1 hover:text-red-500 transition-colors">
+   713→                        <X className="w-3 h-3" />
+   714→                      </button>
+   715→                    </Badge>
+   716→                  ))}
+   717→                </div>
+   718→              ) : (
+   719→                <p className="text-xs text-muted-foreground">هنوز نقطه‌ای اضافه نشده — از سوپرپرامپت استفاده کنید</p>
+   720→              )}
+   721→            </div>
+   722→
+   723→            {/* ─── Parsed Fields: Description ─── */}
+   724→            <div className="md:col-span-2 space-y-2">
+   725→              <Label>توضیحات</Label>
+   726→              <Textarea
+   727→                value={form.description}
+   728→                onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+   729→                placeholder="توضیحات کامل محصول..."
+   730→                rows={4}
+   731→                className="text-sm"
+   732→              />
+   733→            </div>
+   734→
+   735→            {/* ─── SEO Fields ─── */}
+   736→            <div className="md:col-span-2 mt-1">
+   737→              <Separator className="mb-3" />
+   738→              <p className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wide">تنظیمات سئو</p>
+   739→            </div>
+   740→            <div className="space-y-2">
+   741→              <Label>Meta Title</Label>
+   742→              <Input
+   743→                value={form.metaTitle}
+   744→                onChange={e => setForm(f => ({ ...f, metaTitle: e.target.value }))}
+   745→                placeholder="عنوان سئو (خودکار تولید می‌شود)"
+   746→                className="text-sm"
+   747→              />
+   748→            </div>
+   749→            <div className="space-y-2">
+   750→              <Label>کلمات کلیدی</Label>
+   751→              <Input
+   752→                value={form.keywords}
+   753→                onChange={e => setForm(f => ({ ...f, keywords: e.target.value }))}
+   754→                placeholder="دندانپزشکی، مرصادنت، ..."
+   755→                className="text-sm"
+   756→              />
+   757→            </div>
+   758→            <div className="space-y-2 md:col-span-2">
+   759→              <Label>Meta Description</Label>
+   760→              <Textarea
+   761→                value={form.metaDescription}
+   762→                onChange={e => setForm(f => ({ ...f, metaDescription: e.target.value }))}
+   763→                placeholder="توضیحات متا (حداکثر ۱۵۰ کاراکتر)"
+   764→                rows={2}
+   765→                className="text-sm"
+   766→              />
+   767→              {form.metaDescription.length > 160 && (
+   768→                <p className="text-xs text-amber-600">طول توضیحات متا بیشتر از ۱۶۰ کاراکتر است ({form.metaDescription.length})</p>
+   769→              )}
+   770→            </div>
+   771→          </div>
+   772→          <div className="flex justify-end gap-3 mt-6">
+   773→            <Button variant="outline" onClick={() => setDialogOpen(false)}>انصراف</Button>
+   774→            <Button onClick={handleSave} disabled={saving} className="bg-[#16233F] hover:bg-[#1e2d4d]">
+   775→              {saving && <Loader2 className="w-4 h-4 ml-2 animate-spin" />}
+   776→              {editing ? 'بروزرسانی' : 'ایجاد محصول'}
+   777→            </Button>
+   778→          </div>
+   779→        </DialogContent>
+   780→      </Dialog>
+   781→
+   782→      {/* Delete Confirmation */}
+   783→      <AlertDialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
+   784→        <AlertDialogContent dir="rtl">
+   785→          <AlertDialogHeader>
+   786→            <AlertDialogTitle>حذف محصول</AlertDialogTitle>
+   787→            <AlertDialogDescription>
+   788→              آیا از حذف محصول &laquo;{deleteTarget?.name}&raquo; اطمینان دارید؟ این عمل غیرقابل بازگشت است.
+   789→            </AlertDialogDescription>
+   790→          </AlertDialogHeader>
+   791→          <AlertDialogFooter>
+   792→            <AlertDialogCancel>انصراف</AlertDialogCancel>
+   793→            <AlertDialogAction onClick={handleDelete} disabled={deleting} className="bg-red-600 hover:bg-red-700">
+   794→              {deleting && <Loader2 className="w-4 h-4 ml-2 animate-spin" />}
+   795→              حذف
+   796→            </AlertDialogAction>
+   797→          </AlertDialogFooter>
+   798→        </AlertDialogContent>
+   799→      </AlertDialog>
+   800→
+   801→      {/* Image Gallery Dialog */}
+   802→      <Dialog open={!!imageProduct} onOpenChange={() => setImageProduct(null)}>
+   803→        <DialogContent className="max-w-3xl" dir="rtl">
+   804→          <DialogHeader>
+   805→            <DialogTitle>تصاویر محصول: {imageProduct?.name}</DialogTitle>
+   806→            <DialogDescription>مدیریت گالری تصاویر</DialogDescription>
+   807→          </DialogHeader>
+   808→          <div className="mt-4">
+   809→            <div className="flex items-center gap-3 mb-4">
+   810→              <label className="cursor-pointer">
+   811→                <input type="file" accept="image/*" className="hidden" onChange={handleUpload} />
+   812→                <Button variant="outline" asChild disabled={uploading}>
+   813→                  <span>
+   814→                    {uploading ? <Loader2 className="w-4 h-4 ml-2 animate-spin" /> : <Upload className="w-4 h-4 ml-2" />}
+   815→                    آپلود تصویر
+   816→                  </span>
+   817→                </Button>
+   818→              </label>
+   819→            </div>
+   820→            {images.length === 0 ? (
+   821→              <p className="text-center text-muted-foreground py-12">تصویری وجود ندارد</p>
+   822→            ) : (
+   823→              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+   824→                {images.map(img => (
+   825→                  <div key={img.id} className="relative group rounded-lg overflow-hidden border bg-gray-50">
+   826→                    <img src={img.url} alt={img.alt || ''} className="w-full h-32 object-cover" />
+   827→                    <button
+   828→                      onClick={() => handleDeleteImage(img.id)}
+   829→                      className="absolute top-1 left-1 w-7 h-7 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+   830→                    >
+   831→                      <X className="w-4 h-4" />
+   832→                    </button>
+   833→                  </div>
+   834→                ))}
+   835→              </div>
+   836→            )}
+   837→          </div>
+   838→        </DialogContent>
+   839→      </Dialog>
+   840→    </div>
+   841→  );
+   842→}
