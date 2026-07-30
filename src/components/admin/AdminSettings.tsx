@@ -10,6 +10,7 @@ import { Separator } from '@/components/ui/separator';
 import { Save, Loader2, Globe, Phone, Mail, MapPin, Instagram, MessageCircle, ImagePlus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { adminFetch } from '@/lib/admin-utils';
+import { cn } from '@/lib/utils';
 
 export function AdminSettings({ token }: { token: string }) {
   const [settings, setSettings] = useState<Record<string, string>>({});
@@ -163,14 +164,21 @@ export function AdminSettings({ token }: { token: string }) {
                 <div className="space-y-1.5">
                   <Label className="text-xs">تصویر اسلاید</Label>
                   <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                    <div className="relative w-full sm:w-72 h-40 rounded-lg border-2 border-dashed border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden flex-shrink-0">
+                    <div
+                      className={cn(
+                        'relative w-full sm:w-80 h-44 rounded-lg border-2 flex items-center justify-center overflow-hidden flex-shrink-0 transition-colors',
+                        imgVal
+                          ? 'border-solid border-gray-200 bg-white'
+                          : 'border-dashed border-gray-300 bg-gray-50'
+                      )}
+                    >
                       {imgVal ? (
                         <>
                           <img src={imgVal} alt={`پیش‌نمایش اسلاید ${i}`} className="w-full h-full object-cover" />
                           <button
                             type="button"
                             onClick={() => update(`hero_slide_${i}_image`, '')}
-                            className="absolute top-1 right-1 w-6 h-6 rounded-full bg-red-500 text-white flex items-center justify-center hover:bg-red-600 shadow"
+                            className="absolute top-1 right-1 w-6 h-6 rounded-full bg-red-500 text-white flex items-center justify-center hover:bg-red-600 shadow z-10"
                             aria-label="حذف تصویر"
                           >
                             <X className="w-3.5 h-3.5" />

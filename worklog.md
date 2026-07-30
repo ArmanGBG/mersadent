@@ -385,3 +385,38 @@ Stage Summary:
 - Image upload previews are now substantially larger: category logos preview at 160×160 (object-contain, no cropping) and hero banners preview at 288×160 (responsive, full-width on mobile). The previous tiny centered squares are gone.
 - The product form now has a searchable brand selector and a fully hierarchical, searchable category selector that reveals sub-levels progressively (parent → child → grandchild → …) with a live breadcrumb. Finding a brand or category is now fast via search, and the stepped category flow matches the user's requested UX.
 - Two new reusable components added: `SearchableSelect` (generic searchable combobox) and `CategoryCascader` (hierarchical stepped selector). Both are RTL-aware and styled to match the existing shadcn Select look.
+
+---
+Task ID: 3
+Agent: main
+Task: User reported that uploaded category/hero images still render tiny inside a small box with a visible "square" (dashed border placeholder) behind them — the uploaded image is barely visible. Fix the preview rendering so uploaded images display large and clean.
+
+Work Log:
+- Root cause (confirmed via Agent Browser DOM inspection on category 34 "ترمیمی و زیبایی" which has an uploaded SVG image):
+  - The preview box used `border-2 border-dashed border-gray-200 bg-gray-50` at ALL times (even when an image was present), so the dashed placeholder "square" remained visible behind/around the image.
+  - The `<img>` used `object-contain p-2` — the `p-2` (8px) padding shrunk the usable area to ~144×144 inside a 160×160 box, and `object-contain` further letterboxed the image, making logos with whitespace or non-square aspect ratios appear very small in the center.
+  - DOM measurement before fix: box 160×160, image natural 84×150, rendered via object-contain with padding → visually tiny with dashed border visible.
+- Fix in `src/components/admin/AdminCategories.tsx`:
+  - Added `import { cn } from '@/lib/utils'`.
+  - Rewrote the preview box to use conditional classes via `cn()`:
+    - When image present: `w-48 h-48 border-solid border-gray-200 bg-white` (192×192, clean solid border, white background — no dashed placeholder visible).
+    - When empty: `w-48 h-48 border-dashed border-gray-300 bg-gray-50` (192×192, dashed border + gray bg + folder icon placeholder).
+  - Changed `<img>` from `object-contain p-2` to `object-contain` (removed padding so the image fills the entire 192×192 area; object-contain preserves aspect ratio so logos aren't cropped).
+  - Enlarged placeholder `FolderOpen` icon from `w-12 h-12` to `w-14 h-14` to match the bigger box.
+  - Added `z-10` to the remove button so it stays above the image.
+- Fix in `src/components/admin/AdminSettings.tsx` (hero slide previews):
+  - Added `import { cn } from '@/lib/utils'`.
+  - Applied the same conditional border logic: `border-solid border-gray-200 bg-white` when image present, `border-dashed border-gray-300 bg-gray-50` when empty.
+  - Enlarged the box from `w-full sm:w-72 h-40` (288×160) to `w-full sm:w-80 h-44` (320×176) for a larger banner preview.
+  - Kept `object-cover` for hero (banners should fill; no padding needed). Added `z-10` to the remove button.
+
+Verification (Agent Browser, admin login admin/admin):
+- Category edit dialog (category 34, has SVG image): DOM confirmed the preview box is now 192×192 with class `border-solid border-gray-200 bg-white` (no more dashed border), image class is `w-full h-full object-contain` (no padding). The uploaded logo now fills the box area cleanly.
+- Settings → Hero: DOM confirmed all 4 slide preview boxes are 320×176 with `border-solid` (no dashed border), all with images rendering (`hasImg: true`).
+- No console errors, no runtime errors in dev.log; all API calls returned 200.
+- Lint: clean (only the pre-existing unrelated error in mersadent-clone/examples/websocket/frontend.tsx).
+
+Stage Summary:
+- Uploaded category logos/images now display at 192×192 on a clean white background with a subtle solid border — no more tiny image inside a dashed placeholder square. Logos render via object-contain (no cropping, no padding) so they fill the preview area properly.
+- Hero slide previews enlarged to 320×176 with the same clean styling (solid border + white bg when image present, dashed placeholder only when empty).
+- The "square behind the image" and "image too small" issues are resolved for both the category image upload and the hero slide image upload.

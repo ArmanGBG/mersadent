@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { adminFetch, toSlug } from '@/lib/admin-utils';
+import { cn } from '@/lib/utils';
 
 interface CategoryNode {
   id: number;
@@ -601,21 +602,32 @@ export function AdminCategories({ token }: { token: string }) {
             <div className="space-y-2">
               <Label>تصویر / لوگو دسته‌بندی</Label>
               <div className="flex items-center gap-4">
-                <div className="relative w-40 h-40 rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden flex-shrink-0">
+                <div
+                  className={cn(
+                    'relative w-48 h-48 rounded-xl border-2 flex items-center justify-center overflow-hidden flex-shrink-0 transition-colors',
+                    form.image
+                      ? 'border-solid border-gray-200 bg-white'
+                      : 'border-dashed border-gray-300 bg-gray-50'
+                  )}
+                >
                   {form.image ? (
                     <>
-                      <img src={form.image} alt="پیش‌نمایش" className="w-full h-full object-contain p-2" />
+                      <img
+                        src={form.image}
+                        alt="پیش‌نمایش"
+                        className="w-full h-full object-contain"
+                      />
                       <button
                         type="button"
                         onClick={removeImage}
-                        className="absolute top-1 right-1 w-6 h-6 rounded-full bg-red-500 text-white flex items-center justify-center hover:bg-red-600 shadow"
+                        className="absolute top-1 right-1 w-6 h-6 rounded-full bg-red-500 text-white flex items-center justify-center hover:bg-red-600 shadow z-10"
                         aria-label="حذف تصویر"
                       >
                         <X className="w-3.5 h-3.5" />
                       </button>
                     </>
                   ) : (
-                    <FolderOpen className="w-12 h-12 text-gray-300" />
+                    <FolderOpen className="w-14 h-14 text-gray-300" />
                   )}
                 </div>
                 <div className="flex-1 space-y-2">
