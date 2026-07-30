@@ -43,29 +43,25 @@ interface AdminProduct {
   category: { id: number; name: string; slug: string };
   brand: { id: number; name: string; slug: string };
   _count: { images: number };
-  tags: { tagId: number; tag: { id: number; name: string; slug: string; type: string } }[];
 }
 
 interface SimpleCategory { id: number; name: string; slug: string; parentId: number | null; }
 interface SimpleBrand { id: number; name: string; slug: string; }
 
-interface SimpleTag { id: number; name: string; slug: string; type: string; }
-
 interface ProductForm {
   name: string; slug: string; model: string; price: string; priceType: string;
-  availability: string; specs: string; categoryId: string; brandId: string;
+  availability: string; categoryId: string; brandId: string;
   featured: boolean; visible: boolean; discountPercent: string;
   description: string; strengths: string[]; weaknesses: string[];
   metaTitle: string; metaDescription: string; keywords: string;
   sku: string; country: string; warranty: string; weight: string; lowStock: string;
-  tagIds: number[];
 }
 
 const emptyProduct: ProductForm = {
   name: '', slug: '', model: '', price: '', priceType: 'fixed', availability: 'in_stock',
-  specs: '', categoryId: '', brandId: '', featured: false, visible: true, discountPercent: '0',
+  categoryId: '', brandId: '', featured: false, visible: true, discountPercent: '0',
   description: '', strengths: [], weaknesses: [], metaTitle: '', metaDescription: '', keywords: '',
-  sku: '', country: '', warranty: '', weight: '', lowStock: '0', tagIds: [],
+  sku: '', country: '', warranty: '', weight: '', lowStock: '0',
 };
 
 export function AdminProducts({ token }: { token: string }) {
@@ -78,7 +74,6 @@ export function AdminProducts({ token }: { token: string }) {
 
   const [categories, setCategories] = useState<SimpleCategory[]>([]);
   const [brands, setBrands] = useState<SimpleBrand[]>([]);
-  const [allTags, setAllTags] = useState<SimpleTag[]>([]);
 
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -115,17 +110,14 @@ export function AdminProducts({ token }: { token: string }) {
 
   const loadLookups = useCallback(async () => {
     try {
-      const [catRes, brandRes, tagsRes] = await Promise.all([
+      const [catRes, brandRes] = await Promise.all([
         adminFetch(token, '/api/admin/categories?flat=true'),
         adminFetch(token, '/api/admin/brands'),
-        fetch('/api/tags'),
       ]);
       const catData = await catRes.json();
       const brandData = await brandRes.json();
-      const tagsData = await tagsRes.json();
       if (catData.categories) setCategories(catData.categories);
       if (brandData.brands) setBrands(brandData.brands);
-      if (Array.isArray(tagsData)) setAllTags(tagsData);
     } catch { /* ignore */ }
   }, [token]);
 
@@ -155,7 +147,6 @@ export function AdminProducts({ token }: { token: string }) {
       price: p.price !== null ? String(p.price) : '',
       priceType: p.priceType,
       availability: p.availability,
-      specs: p.specs || '',
       categoryId: String(p.category.id),
       brandId: String(p.brand.id),
       featured: p.featured,
@@ -172,7 +163,6 @@ export function AdminProducts({ token }: { token: string }) {
       warranty: p.warranty || '',
       weight: p.weight || '',
       lowStock: String(p.lowStock ?? 0),
-      tagIds: (p.tags || []).map((pt) => pt.tag.id),
     });
     setSuperPromptText('');
     setDialogOpen(true);
@@ -193,7 +183,6 @@ export function AdminProducts({ token }: { token: string }) {
         discountPercent: Number(form.discountPercent) || 0,
         priceType: form.priceType,
         availability: form.availability,
-        specs: form.specs || null,
         categoryId: Number(form.categoryId),
         brandId: Number(form.brandId),
         featured: form.featured,
@@ -209,7 +198,6 @@ export function AdminProducts({ token }: { token: string }) {
         warranty: form.warranty || null,
         weight: form.weight || null,
         lowStock: form.lowStock || '0',
-        tagIds: form.tagIds,
       };
 
       if (editing) {
@@ -600,51 +588,6 @@ export function AdminProducts({ token }: { token: string }) {
               />
               <p className="text-xs text-muted-foreground">اگر بیشتر از ۰ باشد، نشان «فقط N عدد مانده» نمایش داده می‌شود</p>
             </div>
-            {/* ─── Tags Section ─── */}
-            <div className="md:col-span-2 space-y-2">
-              <Separator className="mb-3" />
-              <p className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wide">تگ‌ها</p>
-              <div className="flex flex-wrap gap-2 p-3 rounded-lg border bg-gray-50/50 max-h-40 overflow-y-auto">
-                {allTags.filter(t => form.tagIds.includes(t.id)).map(t => (
-                  <Badge key={t.id} variant="secondary" className="bg-[#2FC4C9]/10 text-[#2FC4C9] border-[#2FC4C9]/30 pr-1 pl-2 py-1.5 gap-1 cursor-pointer hover:bg-red-50 hover:text-red-600 hover:border-red-200" onClick={() => setForm(f => ({ ...f, tagIds: f.tagIds.filter(id => id !== t.id) }))}>
-                    <span className="text-xs">{t.name}</span>
-                    <X className="w-3 h-3" />
-                  </Badge>
-                ))}
-                {form.tagIds.length === 0 && <p className="text-xs text-muted-foreground">تگی انتخاب نشده</p>}
-              </div>
-              {allTags.filter(t => !form.tagIds.includes(t.id)).length > 0 && (
-                <Select onValueChange={v => { if (!form.tagIds.includes(Number(v))) setForm(f => ({ ...f, tagIds: [...f.tagIds, Number(v)] })); }}>
-                  <SelectTrigger className="w-full"><SelectValue placeholder="+ افزودن تگ" /></SelectTrigger>
-                  <SelectContent>
-                    {['general', 'feature', 'badge', 'consumable'].map(type => {
-                      const typeTags = allTags.filter(t => t.type === type && !form.tagIds.includes(t.id));
-                      if (typeTags.length === 0) return null;
-                      return (
-                        <div key={type}>
-                          <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">{type === 'general' ? 'عمومی' : type === 'feature' ? 'ویژگی' : type === 'badge' ? 'نشان' : 'نوع'}</div>
-                          {typeTags.map(t => (
-                            <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>
-                          ))}
-                        </div>
-                      );
-                    })}
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
-            <div className="space-y-2 md:col-span-2">
-              <Label>مشخصات (JSON)</Label>
-              <Textarea
-                value={form.specs}
-                onChange={e => setForm(f => ({ ...f, specs: e.target.value }))}
-                placeholder='[{"key":"وزن","value":"2 کیلوگرم"}]'
-                rows={4}
-                dir="ltr"
-                className="font-mono text-sm"
-              />
-            </div>
-
             {/* ─── Super-Prompt Section ─── */}
             <div className="md:col-span-2 mt-2">
               <Separator className="mb-4" />

@@ -150,3 +150,40 @@ Stage Summary:
 - Admin categories page now shows the AGGREGATED product count (this category + all descendants) for every category at every level, instead of only the direct product count.
 - Both tree mode (used by AdminCategories page) and flat mode (used by AdminProducts category dropdown) return the aggregated `totalProducts` field.
 - Public storefront was already correct (no change needed there).
+
+---
+Task ID: 5
+Agent: main
+Task: Remove the "Tags" (تگ‌ها) section AND the "Specs JSON" (مشخصات JSON) textarea from the admin product create/edit form. User found both confusing and unnecessary.
+
+Work Log:
+- Read previous worklog (Tasks 1-4) for context.
+- Clarified with user which "tags" they meant (the تگ‌ها badges + "+ افزودن تگ" dropdown in the product form, NOT the SEO keywords field). User also requested removing the "مشخصات (JSON)" textarea.
+- Identified an important caveat: the `specs` DB column IS still used by the storefront product detail page ("مشخصات فنی" section) and the compare feature. Decision: remove the admin UI + form state + API payload, but KEEP the DB column and storefront rendering so existing product specs are not destroyed. The super-prompt parser does not touch specs, so no impact there.
+- Edited `src/components/admin/AdminProducts.tsx`:
+  - Removed `tags` field from `AdminProduct` interface.
+  - Removed `SimpleTag` interface entirely.
+  - Removed `specs: string` and `tagIds: number[]` from `ProductForm` interface.
+  - Removed `specs: ''` and `tagIds: []` from `emptyProduct`.
+  - Removed `allTags` state and its setter.
+  - Simplified `loadLookups` to only fetch categories + brands (dropped the `fetch('/api/tags')` and `tagsData` handling).
+  - Removed `specs: p.specs || ''` and `tagIds: (p.tags || []).map(...)` from `openEdit`.
+  - Removed `specs: form.specs || null` and `tagIds: form.tagIds` from the `handleSave` request body.
+  - Deleted the entire "Tags Section" UI block (separator + تگ‌ها heading + selected-tag badges box + the "+ افزودن تگ" Select dropdown grouped by type).
+  - Deleted the entire "مشخصات (JSON)" Textarea block.
+- Edited `src/app/api/admin/products/route.ts`:
+  - GET: removed `tags: { include: { tag: ... } }` from the product query include.
+  - POST: removed `specs` and `tagIds` from the destructured body; removed `specs: specs || null` from the `data` object; removed the `tags: { create: ... }` block; removed `tags` from the response `include`.
+  - PUT: removed `specs` and `tagIds` from destructuring; removed `specs: specs ?? null` from `updateData` (so existing specs are preserved on update, not wiped to null); removed the `if (tagIds !== undefined) { deleteMany + create }` block; removed `tags` from the response `include`.
+- Edited `src/app/api/admin/products/[id]/route.ts` PUT: removed `specs` from destructuring and `specs: specs ?? null` from `updateData` (same preserve-on-update protection).
+- Lint: clean (only the pre-existing error in `mersadent-clone/examples/websocket/frontend.tsx`, unrelated to this task).
+- Browser verification via Agent Browser + VLM:
+  - Logged in as admin/admin → Products → "افزودن محصول". VLM analysis of the dialog screenshot confirmed: (1) NO "تگ‌ها" section, (2) NO "مشخصات (JSON)" textarea. The dialog now flows: product info → low-stock → super-prompt → strengths/weaknesses → description → SEO settings.
+  - Opened the edit dialog on an existing product ("ست رابردم کامل", which had tags in the DB). Confirmed: title "ویرایش محصول", no Tags section, no Specs JSON section, and NO runtime/console errors. Editing existing products that still carry `tags`/`specs` in the DB works without breaking.
+  - Dev server logs show clean compilation and all admin product API calls returning 200.
+
+Stage Summary:
+- Both the "تگ‌ها" (Tags) section and the "مشخصات (JSON)" textarea have been completely removed from the admin product create/edit form, as requested.
+- The DB tables `Tag` / `ProductTag` and the `specs` column on `Product` were intentionally KEPT (removing them would require a DB reset and would destroy the storefront's "مشخصات فنی" display for existing products). They are now simply unused by the admin UI.
+- The `/api/tags` endpoint still exists but is no longer called by anything in the admin UI. If the user later wants to fully purge tags from the DB + remove the `/api/tags` route + drop the schema models, that's a follow-up task requiring `bun run db:push` (which resets SQLite data).
+- Existing products' specs still render on the storefront product detail page and compare view, unchanged.

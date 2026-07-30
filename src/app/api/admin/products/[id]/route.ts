@@ -41,13 +41,13 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { name, slug, model, price, priceType, availability, specs, featured, categoryId, brandId, order, description, strengths, weaknesses, metaTitle, metaDescription, keywords } = body;
+    const { name, slug, model, price, priceType, availability, featured, categoryId, brandId, order, description, strengths, weaknesses, metaTitle, metaDescription, keywords } = body;
 
     if (!name) {
       return NextResponse.json({ error: 'نام محصول الزامی است' }, { status: 400 });
     }
 
-    const updateData: any = { name, model: model ?? null, priceType: priceType || 'fixed', availability: availability || 'in_stock', specs: specs ?? null, featured: !!featured };
+    const updateData: any = { name, model: model ?? null, priceType: priceType || 'fixed', availability: availability || 'in_stock', featured: !!featured };
     if (price !== undefined) updateData.price = price === '' ? null : parseInt(price);
     if (slug !== undefined) updateData.slug = slug;
     if (categoryId !== undefined) updateData.categoryId = parseInt(categoryId);

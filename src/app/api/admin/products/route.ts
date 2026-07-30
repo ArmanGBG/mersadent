@@ -43,7 +43,6 @@ export async function GET(request: NextRequest) {
           category: { select: { id: true, name: true, slug: true } },
           brand: { select: { id: true, name: true, slug: true } },
           _count: { select: { images: true } },
-          tags: { include: { tag: { select: { id: true, name: true, slug: true, type: true } } } },
         },
         orderBy: { id: 'desc' },
         skip,
@@ -84,7 +83,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { name, slug, model, price, priceType, availability, specs, categoryId, brandId, featured, visible, order, discountPercent, description, strengths, weaknesses, metaTitle, metaDescription, keywords, sku, country, warranty, weight, lowStock, tagIds } = body;
+    const { name, slug, model, price, priceType, availability, categoryId, brandId, featured, visible, order, discountPercent, description, strengths, weaknesses, metaTitle, metaDescription, keywords, sku, country, warranty, weight, lowStock } = body;
 
     if (!name || !categoryId || !brandId) {
       return NextResponse.json({ error: 'نام، دسته‌بندی و برند الزامی هستند' }, { status: 400 });
@@ -105,7 +104,6 @@ export async function POST(request: NextRequest) {
         price: price !== null && price !== undefined && price !== '' ? parseInt(price) : null,
         priceType: priceType || 'fixed',
         availability: availability || 'in_stock',
-        specs: specs || null,
         categoryId: parseInt(categoryId),
         brandId: parseInt(brandId),
         featured: !!featured,
@@ -118,11 +116,8 @@ export async function POST(request: NextRequest) {
         metaTitle: metaTitle || null,
         metaDescription: metaDescription || null,
         keywords: keywords || null,
-        tags: tagIds && Array.isArray(tagIds) && tagIds.length > 0 ? {
-          create: tagIds.map((tagId: number) => ({ tagId })),
-        } : undefined,
       },
-      include: { category: true, brand: true, tags: { include: { tag: { select: { id: true, name: true, slug: true } } } } },
+      include: { category: true, brand: true },
     });
 
     await logActivity('product.create', `محصول "${name}" ایجاد شد`);
@@ -140,7 +135,7 @@ export async function PUT(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { id, name, slug, model, price, priceType, availability, specs, featured, visible, categoryId, brandId, order, discountPercent, description, strengths, weaknesses, metaTitle, metaDescription, keywords, sku, country, warranty, weight, lowStock, tagIds } = body;
+    const { id, name, slug, model, price, priceType, availability, featured, visible, categoryId, brandId, order, discountPercent, description, strengths, weaknesses, metaTitle, metaDescription, keywords, sku, country, warranty, weight, lowStock } = body;
 
     if (!id || !name) {
       return NextResponse.json({ error: 'نام محصول الزامی است' }, { status: 400 });
@@ -158,7 +153,6 @@ export async function PUT(request: NextRequest) {
       price: price !== null && price !== undefined ? (price === '' ? null : parseInt(price)) : undefined,
       priceType: priceType || 'fixed',
       availability: availability || 'in_stock',
-      specs: specs ?? null,
       featured: !!featured,
       visible: visible !== undefined ? !!visible : undefined,
       order: order ?? undefined,
@@ -174,20 +168,10 @@ export async function PUT(request: NextRequest) {
     if (categoryId) updateData.category = { connect: { id: parseInt(categoryId) } };
     if (brandId) updateData.brand = { connect: { id: parseInt(brandId) } };
 
-    // Handle tag updates: delete old + create new
-    if (tagIds !== undefined && Array.isArray(tagIds)) {
-      await db.productTag.deleteMany({ where: { productId: parseInt(id) } });
-      if (tagIds.length > 0) {
-        updateData.tags = {
-          create: tagIds.map((tagId: number) => ({ tagId })),
-        };
-      }
-    }
-
     const product = await db.product.update({
       where: { id: parseInt(id) },
       data: updateData,
-      include: { category: true, brand: true, tags: { include: { tag: { select: { id: true, name: true, slug: true } } } } },
+      include: { category: true, brand: true },
     });
 
     await logActivity('product.update', `محصول "${name}" بروزرسانی شد`);
