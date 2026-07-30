@@ -187,3 +187,44 @@ Stage Summary:
 - The DB tables `Tag` / `ProductTag` and the `specs` column on `Product` were intentionally KEPT (removing them would require a DB reset and would destroy the storefront's "مشخصات فنی" display for existing products). They are now simply unused by the admin UI.
 - The `/api/tags` endpoint still exists but is no longer called by anything in the admin UI. If the user later wants to fully purge tags from the DB + remove the `/api/tags` route + drop the schema models, that's a follow-up task requiring `bun run db:push` (which resets SQLite data).
 - Existing products' specs still render on the storefront product detail page and compare view, unchanged.
+
+---
+Task ID: 6
+Agent: main
+Task: Add a mobile-only fixed bottom tab bar (hamburger-style footer menu) — Option A from the two interpretations discussed with the user. 5 tabs: Home, Categories, Search, Cart, Account. Only visible on mobile (`md:hidden`), fixed at the bottom, with active-state highlighting and a cart badge.
+
+Work Log:
+- Read previous worklog (Tasks 1-5) for context.
+- Examined the existing app structure: `PageView` union type, `MersadentApp` component (which holds `currentView`, `cartCount`, `user`, `navigate`, `handleSearch`, `setCartSidebarOpen`, `setAuthModalOpen`), the existing mobile hamburger `Sheet` in `Header`, and the existing `Footer`.
+- Added `LayoutGrid` to the lucide-react imports.
+- Created a new `MobileBottomNav` component (in `src/app/page.tsx`, just before the `Footer` function) with these features:
+  - 5 tabs in a fixed bottom `<nav>` (`md:hidden`, `fixed bottom-0 left-0 right-0 z-40`, white bg, top border, subtle shadow, safe-area-inset-bottom padding for iOS notch devices):
+    - **خانه** (Home icon) → `onNavigate({type:'home'})` + scroll to top
+    - **دسته‌بندی‌ها** (LayoutGrid icon) → `onNavigate({type:'category', categoryId:0, slug:'all'})` (the existing "all categories" view)
+    - **جستجو** (Search icon) → opens a bottom `Sheet` (side="bottom") with a focused search input + submit button
+    - **سبد خرید** (ShoppingCart icon) → opens the existing `CartSidebar` (via `onOpenCart`); shows a red badge with the cart count in Persian numerals when `cartCount > 0`
+    - **ورود / حساب من** (User icon) → if logged in: `onNavigate({type:'user'})`; if not: opens the `AuthModal` (via `onAuthRequired`)
+  - Active-state highlighting: the active tab is colored `text-mersadent-accent` (teal) and has a small teal indicator bar at the top; inactive tabs are gray. Active tab determined by `currentView.type` (home→home, category→categories, search→search, cart/checkout→cart, user/order-detail→user, default→home).
+  - Each tab is a flex-column button with the icon on top and a tiny label below (`text-[10px]`).
+  - Search bottom sheet uses an uncontrolled `<Input defaultValue="">` with `useRef`, and `submitSearch` reads the value directly from `searchInputRef.current?.value` (robust; avoids stale-state and React-controlled-input test limitations).
+  - Autofocus on the search input when the sheet opens (via a `useEffect` with a 100ms timeout, since Radix Sheet mounts content asynchronously).
+- Integrated into `MersadentApp`'s render: added a `<div className="md:hidden h-16" aria-hidden="true" />` spacer right before `<MobileBottomNav>` so the fixed bar doesn't cover the footer's last row when scrolled to the bottom. Passed props: `currentView`, `user`, `cartCount`, `onNavigate={navigate}`, `onSearch={handleSearch}`, `onOpenCart`, `onAuthRequired`.
+- **Critical bug found & fixed during browser testing**: the search submit initially called `onNavigate({type:'search', query})` directly, but `SearchResultsPage` reads its query from a separate `searchQuery` state (set by `handleSearch`, not by `navigate`). So the search ran with an empty/stale query. Fixed by adding an `onSearch` prop to `MobileBottomNav` and calling `onSearch(raw)` (which is `handleSearch`) instead of `onNavigate`. Verified: search for "کامپوزیت" now correctly shows "نتایج جستجو برای: کامپوزیت".
+- Lint: clean (only the pre-existing error in `mersadent-clone/examples/websocket/frontend.tsx`, unrelated).
+- Dev server: clean compile, no runtime errors.
+
+Verification (browser + VLM, mobile viewport 390×844 iPhone 14 Pro):
+- Bottom nav renders with exactly 5 tabs labeled (RTL): خانه، دسته‌بندی‌ها، جستجو، سبد خرید، ورود. VLM-confirmed.
+- Home tab is active (teal) on the home page; clicking Categories makes Categories active; clicking Search submits and makes Search active.
+- Clicking the Search tab opens a bottom sheet with an autofocused input + search button; submitting "کامپوزیت" navigates to "نتایج جستجو برای: کامپوزیت".
+- Clicking the Cart tab opens the CartSidebar.
+- Clicking the User tab (when logged out) opens the AuthModal.
+- Scrolled to the very bottom of the home page: the "پنل مدیریت" button (footer's last element) is fully visible (bounding rect inside viewport), confirming the `h-16` spacer prevents the fixed bar from covering footer content.
+- Switched viewport to 1280×800 (desktop): both the bottom nav and the spacer have `display: none` (correctly hidden on desktop via `md:hidden`).
+
+Stage Summary:
+- A mobile-only fixed bottom tab bar (Option A) is now live, giving users 1-tap access to Home / Categories / Search / Cart / Account from anywhere in the storefront.
+- The bar is hidden on desktop; the spacer ensures footer content is never covered on mobile.
+- Active tab is highlighted based on the current view; cart badge shows count when non-zero.
+- Search uses a dedicated bottom sheet with autofocus; the critical `onSearch` vs `onNavigate` bug was caught and fixed during testing.
+- Verified end-to-end in the browser (mobile + desktop viewports) with VLM screenshot analysis.
