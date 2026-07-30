@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { name, slug, model, price, priceType, availability, categoryId, brandId, featured, visible, order, discountPercent, description, strengths, weaknesses, metaTitle, metaDescription, keywords, sku, country, warranty, weight, lowStock } = body;
+    const { name, slug, model, price, priceType, availability, categoryId, brandId, featured, visible, order, discountPercent, description, strengths, weaknesses, metaTitle, metaDescription, keywords, sku, country, warranty, weight, productType, typeFields, customSpecs } = body;
 
     if (!name || !categoryId || !brandId) {
       return NextResponse.json({ error: 'نام، دسته‌بندی و برند الزامی هستند' }, { status: 400 });
@@ -100,7 +100,6 @@ export async function POST(request: NextRequest) {
         country: country || null,
         warranty: warranty || null,
         weight: weight || null,
-        lowStock: lowStock !== undefined ? parseInt(lowStock) : 0,
         price: price !== null && price !== undefined && price !== '' ? parseInt(price) : null,
         priceType: priceType || 'fixed',
         availability: availability || 'in_stock',
@@ -116,6 +115,9 @@ export async function POST(request: NextRequest) {
         metaTitle: metaTitle || null,
         metaDescription: metaDescription || null,
         keywords: keywords || null,
+        productType: productType || null,
+        typeFields: typeFields || null,
+        customSpecs: customSpecs || null,
       },
       include: { category: true, brand: true },
     });
@@ -135,7 +137,7 @@ export async function PUT(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { id, name, slug, model, price, priceType, availability, featured, visible, categoryId, brandId, order, discountPercent, description, strengths, weaknesses, metaTitle, metaDescription, keywords, sku, country, warranty, weight, lowStock } = body;
+    const { id, name, slug, model, price, priceType, availability, featured, visible, categoryId, brandId, order, discountPercent, description, strengths, weaknesses, metaTitle, metaDescription, keywords, sku, country, warranty, weight, productType, typeFields, customSpecs } = body;
 
     if (!id || !name) {
       return NextResponse.json({ error: 'نام محصول الزامی است' }, { status: 400 });
@@ -149,7 +151,6 @@ export async function PUT(request: NextRequest) {
       country: country !== undefined ? (country || null) : undefined,
       warranty: warranty !== undefined ? (warranty || null) : undefined,
       weight: weight !== undefined ? (weight || null) : undefined,
-      lowStock: lowStock !== undefined ? parseInt(lowStock) : undefined,
       price: price !== null && price !== undefined ? (price === '' ? null : parseInt(price)) : undefined,
       priceType: priceType || 'fixed',
       availability: availability || 'in_stock',
@@ -163,6 +164,9 @@ export async function PUT(request: NextRequest) {
       metaTitle: metaTitle !== undefined ? (metaTitle || null) : undefined,
       metaDescription: metaDescription !== undefined ? (metaDescription || null) : undefined,
       keywords: keywords !== undefined ? (keywords || null) : undefined,
+      productType: productType !== undefined ? (productType || null) : undefined,
+      typeFields: typeFields !== undefined ? (typeFields || null) : undefined,
+      customSpecs: customSpecs !== undefined ? (customSpecs || null) : undefined,
     };
 
     if (categoryId) updateData.category = { connect: { id: parseInt(categoryId) } };

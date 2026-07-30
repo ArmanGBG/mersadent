@@ -123,7 +123,6 @@ interface Product {
   country: string | null;
   warranty: string | null;
   weight: string | null;
-  lowStock: number;
   categoryId: number;
   brandId: number;
   featured: boolean;
@@ -334,12 +333,6 @@ function ProductCard({ product, onClick, user, onAuthRequired, onAddToCart, onTo
               <div className="absolute inset-0 bg-white/70 rounded-lg flex items-center justify-center">
                 <Badge variant="secondary" className="text-red-500 text-xs">ناموجود</Badge>
               </div>
-            )}
-            {/* Low stock indicator */}
-            {product.lowStock > 0 && product.availability === 'in_stock' && (
-              <Badge className="absolute bottom-1.5 right-1.5 bg-red-500 text-white text-[9px] px-1.5 py-0 font-bold">
-                فقط {new Intl.NumberFormat('fa-IR').format(product.lowStock)} عدد مانده
-              </Badge>
             )}
             {/* Product tags */}
             {product.tags && product.tags.length > 0 && (

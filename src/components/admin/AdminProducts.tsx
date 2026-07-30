@@ -30,7 +30,8 @@ import { CategoryCascader } from './CategoryCascader';
 interface AdminProduct {
   id: number; name: string; slug: string; model: string | null;
   price: number | null; priceType: string; availability: string;
-  specs: string | null; featured: boolean; visible: boolean; order: number; discountPercent: number;
+  specs: string | null;
+  featured: boolean; visible: boolean; order: number; discountPercent: number;
   description: string | null;
   strengths: string | null;
   weaknesses: string | null;
@@ -41,7 +42,9 @@ interface AdminProduct {
   country: string | null;
   warranty: string | null;
   weight: string | null;
-  lowStock: number;
+  productType: string | null;
+  typeFields: string | null;
+  customSpecs: string | null;
   category: { id: number; name: string; slug: string };
   brand: { id: number; name: string; slug: string };
   _count: { images: number };
@@ -49,6 +52,16 @@ interface AdminProduct {
 
 interface SimpleCategory { id: number; name: string; slug: string; parentId: number | null; }
 interface SimpleBrand { id: number; name: string; slug: string; }
+interface SimpleCountry { id: number; name: string; }
+
+// Type-specific field shapes (all optional)
+interface DeviceFields { exactModel?: string; keySpecs?: string; autoclavable?: boolean }
+interface MaterialFields { packSize?: string; curingType?: string; expiryDate?: string }
+interface ToolFields { material?: string; packageContents?: string }
+interface ConsumableFields { size?: string; material?: string; perPack?: string }
+type TypeFields = DeviceFields & MaterialFields & ToolFields & ConsumableFields
+
+interface CustomSpec { label: string; value: string }
 
 interface ProductForm {
   name: string; slug: string; model: string; price: string; priceType: string;
@@ -56,14 +69,17 @@ interface ProductForm {
   featured: boolean; visible: boolean; discountPercent: string;
   description: string; strengths: string[]; weaknesses: string[];
   metaTitle: string; metaDescription: string; keywords: string;
-  sku: string; country: string; warranty: string; weight: string; lowStock: string;
+  sku: string; country: string; warranty: string; weight: string;
+  productType: string; typeFields: TypeFields;
+  customSpecs: CustomSpec[];
 }
 
 const emptyProduct: ProductForm = {
   name: '', slug: '', model: '', price: '', priceType: 'fixed', availability: 'in_stock',
   categoryId: '', brandId: '', featured: false, visible: true, discountPercent: '0',
   description: '', strengths: [], weaknesses: [], metaTitle: '', metaDescription: '', keywords: '',
-  sku: '', country: '', warranty: '', weight: '', lowStock: '0',
+  sku: '', country: '', warranty: '', weight: '',
+  productType: '', typeFields: {}, customSpecs: [],
 };
 
 export function AdminProducts({ token }: { token: string }) {
@@ -76,6 +92,12 @@ export function AdminProducts({ token }: { token: string }) {
 
   const [categories, setCategories] = useState<SimpleCategory[]>([]);
   const [brands, setBrands] = useState<SimpleBrand[]>([]);
+  const [countries, setCountries] = useState<SimpleCountry[]>([]);
+
+  // Inline "add country" state
+  const [addingCountry, setAddingCountry] = useState(false);
+  const [newCountryName, setNewCountryName] = useState('');
+  const [savingCountry, setSavingCountry] = useState(false);
 
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -112,14 +134,17 @@ export function AdminProducts({ token }: { token: string }) {
 
   const loadLookups = useCallback(async () => {
     try {
-      const [catRes, brandRes] = await Promise.all([
+      const [catRes, brandRes, countryRes] = await Promise.all([
         adminFetch(token, '/api/admin/categories?flat=true'),
         adminFetch(token, '/api/admin/brands'),
+        adminFetch(token, '/api/admin/countries'),
       ]);
       const catData = await catRes.json();
       const brandData = await brandRes.json();
+      const countryData = await countryRes.json();
       if (catData.categories) setCategories(catData.categories);
       if (brandData.brands) setBrands(brandData.brands);
+      if (countryData.countries) setCountries(countryData.countries);
     } catch { /* ignore */ }
   }, [token]);
 
@@ -140,8 +165,47 @@ export function AdminProducts({ token }: { token: string }) {
     setDialogOpen(true);
   };
 
+  // Inline "add country" — creates a Country row, appends to local list, and selects it
+  const handleAddCountry = async () => {
+    const name = newCountryName.trim();
+    if (!name) { toast.error('نام کشور را وارد کنید'); return; }
+    setSavingCountry(true);
+    try {
+      const res = await adminFetch(token, '/api/admin/countries', {
+        method: 'POST',
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json();
+      if (data.error) { toast.error(data.error); return; }
+      const created: SimpleCountry = data.country;
+      // Avoid duplicate if it already existed
+      setCountries(prev => prev.some(c => c.id === created.id) ? prev : [...prev, created].sort((a, b) => a.name.localeCompare(b.name, 'fa')));
+      setForm(f => ({ ...f, country: created.name }));
+      setNewCountryName('');
+      setAddingCountry(false);
+      toast.success(`کشور «${created.name}» اضافه شد`);
+    } catch { toast.error('خطا در افزودن کشور'); }
+    finally { setSavingCountry(false); }
+  };
+
+  // Update a single type-specific field
+  const setTypeField = (key: keyof TypeFields, value: string | boolean) => {
+    setForm(f => ({ ...f, typeFields: { ...f.typeFields, [key]: value } }));
+  };
+
+  // Custom spec rows
+  const addCustomSpec = () => setForm(f => ({ ...f, customSpecs: [...f.customSpecs, { label: '', value: '' }] }));
+  const updateCustomSpec = (idx: number, key: 'label' | 'value', value: string) =>
+    setForm(f => ({ ...f, customSpecs: f.customSpecs.map((s, i) => i === idx ? { ...s, [key]: value } : s) }));
+  const removeCustomSpec = (idx: number) =>
+    setForm(f => ({ ...f, customSpecs: f.customSpecs.filter((_, i) => i !== idx) }));
+
   const openEdit = (p: AdminProduct) => {
     setEditing(p);
+    let parsedTypeFields: TypeFields = {};
+    try { if (p.typeFields) parsedTypeFields = JSON.parse(p.typeFields); } catch { parsedTypeFields = {}; }
+    let parsedCustomSpecs: CustomSpec[] = [];
+    try { if (p.customSpecs) parsedCustomSpecs = JSON.parse(p.customSpecs); } catch { parsedCustomSpecs = []; }
     setForm({
       name: p.name,
       slug: p.slug,
@@ -164,7 +228,9 @@ export function AdminProducts({ token }: { token: string }) {
       country: p.country || '',
       warranty: p.warranty || '',
       weight: p.weight || '',
-      lowStock: String(p.lowStock ?? 0),
+      productType: p.productType || '',
+      typeFields: parsedTypeFields,
+      customSpecs: parsedCustomSpecs,
     });
     setSuperPromptText('');
     setDialogOpen(true);
@@ -175,8 +241,18 @@ export function AdminProducts({ token }: { token: string }) {
       toast.error('نام، دسته‌بندی و برند الزامی هستند');
       return;
     }
+    if (!form.productType) {
+      toast.error('انتخاب «نوع محصول» الزامی است');
+      return;
+    }
     setSaving(true);
     try {
+      // Strip empty typeFields keys so we don't store empty strings
+      const cleanTypeFields: Record<string, string | boolean> = {};
+      for (const [k, v] of Object.entries(form.typeFields)) {
+        if (v !== undefined && v !== '' && v !== false) cleanTypeFields[k] = v;
+      }
+      const cleanCustomSpecs = form.customSpecs.filter(s => s.label.trim() || s.value.trim());
       const body: Record<string, unknown> = {
         name: form.name,
         slug: form.slug || toSlug(form.name),
@@ -199,7 +275,9 @@ export function AdminProducts({ token }: { token: string }) {
         country: form.country || null,
         warranty: form.warranty || null,
         weight: form.weight || null,
-        lowStock: form.lowStock || '0',
+        productType: form.productType || null,
+        typeFields: Object.keys(cleanTypeFields).length > 0 ? JSON.stringify(cleanTypeFields) : null,
+        customSpecs: cleanCustomSpecs.length > 0 ? JSON.stringify(cleanCustomSpecs) : null,
       };
 
       if (editing) {
@@ -499,6 +577,18 @@ export function AdminProducts({ token }: { token: string }) {
               />
             </div>
             <div className="space-y-2">
+              <Label>نوع محصول *</Label>
+              <Select value={form.productType} onValueChange={v => setForm(f => ({ ...f, productType: v }))}>
+                <SelectTrigger><SelectValue placeholder="انتخاب نوع محصول" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="device">دستگاه</SelectItem>
+                  <SelectItem value="material">مواد</SelectItem>
+                  <SelectItem value="tool">ابزار</SelectItem>
+                  <SelectItem value="consumable">مصرفی</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
               <Label>برند *</Label>
               <SearchableSelect
                 options={brands.map(b => ({ value: String(b.id), label: b.name }))}
@@ -549,7 +639,6 @@ export function AdminProducts({ token }: { token: string }) {
                 <SelectContent>
                   <SelectItem value="in_stock">موجود</SelectItem>
                   <SelectItem value="out_of_stock">ناموجود</SelectItem>
-                  <SelectItem value="call">تماس بگیرید</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -567,7 +656,38 @@ export function AdminProducts({ token }: { token: string }) {
             </div>
             <div className="space-y-2">
               <Label>کشور سازنده</Label>
-              <Input value={form.country} onChange={e => setForm(f => ({ ...f, country: e.target.value }))} placeholder="مثلاً چین، ایران" />
+              {addingCountry ? (
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={newCountryName}
+                    onChange={e => setNewCountryName(e.target.value)}
+                    placeholder="نام کشور جدید"
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddCountry(); } }}
+                    autoFocus
+                  />
+                  <Button type="button" size="sm" onClick={handleAddCountry} disabled={savingCountry} className="bg-[#2FC4C9] hover:bg-[#2FC4C9]/90 text-white shrink-0">
+                    {savingCountry ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                    افزودن
+                  </Button>
+                  <Button type="button" size="sm" variant="ghost" onClick={() => { setAddingCountry(false); setNewCountryName(''); }} className="shrink-0">انصراف</Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <div className="flex-1">
+                    <SearchableSelect
+                      options={countries.map(c => ({ value: c.name, label: c.name }))}
+                      value={form.country}
+                      onChange={v => setForm(f => ({ ...f, country: v }))}
+                      placeholder="انتخاب کشور"
+                      searchPlaceholder="جستجوی نام کشور..."
+                      emptyText="کشوری یافت نشد"
+                    />
+                  </div>
+                  <Button type="button" size="sm" variant="outline" onClick={() => setAddingCountry(true)} className="shrink-0">
+                    <Plus className="w-4 h-4 ml-1" /> کشور جدید
+                  </Button>
+                </div>
+              )}
             </div>
             <div className="space-y-2">
               <Label>گارانتی</Label>
@@ -577,18 +697,95 @@ export function AdminProducts({ token }: { token: string }) {
               <Label>وزن</Label>
               <Input value={form.weight} onChange={e => setForm(f => ({ ...f, weight: e.target.value }))} placeholder="مثلاً ۱۰۶ گرم" dir="ltr" />
             </div>
-            <div className="space-y-2">
-              <Label>موجودی کم (<span className="text-red-500">۰ = غیرفعال</span>)</Label>
-              <Input
-                type="number"
-                min="0"
-                value={form.lowStock}
-                onChange={e => setForm(f => ({ ...f, lowStock: e.target.value }))}
-                placeholder="0"
-                dir="ltr"
-              />
-              <p className="text-xs text-muted-foreground">اگر بیشتر از ۰ باشد، نشان «فقط N عدد مانده» نمایش داده می‌شود</p>
-            </div>
+            {/* ─── Type-Specific Fields ─── */}
+            {form.productType && (
+              <div className="md:col-span-2 mt-1">
+                <Separator className="mb-3" />
+                <p className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wide">
+                  مشخصات اختصاصی — {form.productType === 'device' ? 'دستگاه' : form.productType === 'material' ? 'مواد' : form.productType === 'tool' ? 'ابزار' : 'مصرفی'}
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {form.productType === 'device' && (
+                    <>
+                      <div className="space-y-2">
+                        <Label>مدل دقیق</Label>
+                        <Input value={form.typeFields.exactModel || ''} onChange={e => setTypeField('exactModel', e.target.value)} placeholder="مثلاً X-Smart Pro" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>مشخصات فنی کلیدی</Label>
+                        <Input value={form.typeFields.keySpecs || ''} onChange={e => setTypeField('keySpecs', e.target.value)} placeholder="سرعت: 40000rpm | گشتاور: 70Ncm" />
+                      </div>
+                      <div className="flex items-center gap-2 md:col-span-2">
+                        <Switch checked={!!form.typeFields.autoclavable} onCheckedChange={v => setTypeField('autoclavable', v)} />
+                        <Label>قابلیت اتوکلاو شدن</Label>
+                      </div>
+                    </>
+                  )}
+                  {form.productType === 'material' && (
+                    <>
+                      <div className="space-y-2">
+                        <Label>حجم/وزن بسته‌بندی</Label>
+                        <Input value={form.typeFields.packSize || ''} onChange={e => setTypeField('packSize', e.target.value)} placeholder="مثلاً ۵۰ گرم، ۵ میلی‌لیتر" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>نوع کیورینگ</Label>
+                        <Select value={form.typeFields.curingType || ''} onValueChange={v => setTypeField('curingType', v)}>
+                          <SelectTrigger><SelectValue placeholder="انتخاب نوع کیورینگ" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="light">نوری</SelectItem>
+                            <SelectItem value="self">خودسخت‌شونده</SelectItem>
+                            <SelectItem value="dual">دوال‌کیور</SelectItem>
+                            <SelectItem value="none">ندارد</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>تاریخ انقضا (اختیاری)</Label>
+                        <Input type="date" value={form.typeFields.expiryDate || ''} onChange={e => setTypeField('expiryDate', e.target.value)} dir="ltr" />
+                      </div>
+                    </>
+                  )}
+                  {form.productType === 'tool' && (
+                    <>
+                      <div className="space-y-2">
+                        <Label>جنس</Label>
+                        <Select value={form.typeFields.material || ''} onValueChange={v => setTypeField('material', v)}>
+                          <SelectTrigger><SelectValue placeholder="انتخاب جنس" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="stainless">استیل ضدزنگ</SelectItem>
+                            <SelectItem value="titanium">تیتانیوم</SelectItem>
+                            <SelectItem value="plastic">پلاستیک</SelectItem>
+                            <SelectItem value="other">سایر</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2 md:col-span-2">
+                        <Label>محتویات بسته</Label>
+                        <Input value={form.typeFields.packageContents || ''} onChange={e => setTypeField('packageContents', e.target.value)} placeholder="مثلاً ۵ عدد میرور، ۳ عدد پروب" />
+                      </div>
+                    </>
+                  )}
+                  {form.productType === 'consumable' && (
+                    <>
+                      <div className="space-y-2">
+                        <Label>سایز</Label>
+                        <Input value={form.typeFields.size || ''} onChange={e => setTypeField('size', e.target.value)} placeholder="مثلاً ۲۵mm، میانه" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>جنس</Label>
+                        <Input value={form.typeFields.material || ''} onChange={e => setTypeField('material', e.target.value)} placeholder="مثلاً نایلون، لاتکس" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>تعداد در بسته</Label>
+                        <Input type="number" min="0" value={form.typeFields.perPack || ''} onChange={e => setTypeField('perPack', e.target.value)} placeholder="مثلاً ۱۰۰" dir="ltr" />
+                      </div>
+                    </>
+                  )}
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-2">تمام فیلدهای این بخش اختیاری هستند.</p>
+              </div>
+            )}
+
             {/* ─── Super-Prompt Section ─── */}
             <div className="md:col-span-2 mt-2">
               <Separator className="mb-4" />
@@ -674,6 +871,47 @@ export function AdminProducts({ token }: { token: string }) {
                 rows={4}
                 className="text-sm"
               />
+            </div>
+
+            {/* ─── Custom Specs ─── */}
+            <div className="md:col-span-2 mt-1">
+              <Separator className="mb-3" />
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">ویژگی‌های سفارشی</p>
+                <Button type="button" size="sm" variant="outline" onClick={addCustomSpec}>
+                  <Plus className="w-4 h-4 ml-1" /> افزودن ویژگی جدید
+                </Button>
+              </div>
+              {form.customSpecs.length === 0 ? (
+                <p className="text-xs text-muted-foreground">هنوز ویژگی سفارشی اضافه نشده — این بخش کاملاً اختیاری است.</p>
+              ) : (
+                <div className="space-y-2">
+                  {form.customSpecs.map((spec, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <Input
+                        value={spec.label}
+                        onChange={e => updateCustomSpec(idx, 'label', e.target.value)}
+                        placeholder="نام ویژگی"
+                        className="flex-1"
+                      />
+                      <Input
+                        value={spec.value}
+                        onChange={e => updateCustomSpec(idx, 'value', e.target.value)}
+                        placeholder="مقدار"
+                        className="flex-1"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeCustomSpec(idx)}
+                        className="p-2 rounded-md hover:bg-red-50 text-red-500 transition-colors shrink-0"
+                        aria-label="حذف ویژگی"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* ─── SEO Fields ─── */}

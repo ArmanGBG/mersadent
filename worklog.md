@@ -420,3 +420,67 @@ Stage Summary:
 - Uploaded category logos/images now display at 192×192 on a clean white background with a subtle solid border — no more tiny image inside a dashed placeholder square. Logos render via object-contain (no cropping, no padding) so they fill the preview area properly.
 - Hero slide previews enlarged to 320×176 with the same clean styling (solid border + white bg when image present, dashed placeholder only when empty).
 - The "square behind the image" and "image too small" issues are resolved for both the category image upload and the hero slide image upload.
+
+---
+Task ID: 4
+Agent: main
+Task: Apply 4 sequential patches to the existing product add/edit form — (1) simplify inventory, (2) country → searchable select + quick-add, (3) product type + type-specific fields, (4) custom specs section. All changes scoped to the admin product form + DB; untouched: category cascader, brand, price/discount, AI super-prompt, strengths/weaknesses, description & SEO.
+
+Work Log:
+Schema (prisma/schema.prisma) + `bunx prisma db push --accept-data-loss`:
+- Removed `lowStock Int @default(0)` from Product (intentional data loss of 33 non-null values — the numeric threshold field is being deleted entirely per Patch 1).
+- Added `productType String?` (device|material|tool|consumable), `typeFields String?` (JSON string), `customSpecs String?` (JSON string) to Product. SQLite has no JSONB, so JSON is stored as a string (same pattern as existing strengths/weaknesses/specs).
+- Added new `Country` model (id, name @unique, order) as a standalone lookup table — NO FK to Product (by design, so legacy free-text country values stay untouched per Patch 2 requirement).
+- Added `@@index([productType])`.
+
+Patch 1 — Inventory simplification:
+- Removed the "موجودی کم (threshold)" number field from the product form entirely.
+- Reduced the availability select from 3 options to 2: موجود (in_stock) / ناموجود (out_of_stock) — removed the "تماس بگیرید" option. Kept the existing `availability String` varchar column (already not a number); value names in_stock/out_of_stock are preserved because ~12 storefront/cart/SEO/compare/dashboard call sites read these exact strings (renaming would break them).
+- Removed lowStock from: ProductForm interface, emptyProduct, openEdit, handleSave, AdminProduct interface.
+- Removed the "فقط N عدد مانده" low-stock badge from the storefront product card in page.tsx, and removed lowStock from the Product interface there.
+- Removed lowStock handling from the product API POST/PUT routes.
+
+Patch 2 — Country → searchable select + quick-add:
+- Created `src/app/api/admin/countries/route.ts` (GET list, POST create, DELETE) — copies the brand API pattern. GET auto-seeds 14 default countries (ایران، چین، آلمان، ...) on first access when the table is empty, so the dropdown is never empty. POST is idempotent (returns existing if name matches). NOTE: SQLite doesn't support `createMany({ skipDuplicates })` — removed that option (count===0 guard is sufficient).
+- AdminProducts: added `countries` state + fetch in loadLookups (parallel with categories/brands).
+- Replaced the free-text "کشور سازنده" Input with a SearchableSelect (value/label = country name) + a "کشور جدید" outline button next to it. Clicking the button reveals an inline Input + "افزودن"/"انصراف" buttons. On add: POST /api/admin/countries, append to local list (sorted), and auto-select the new country name in form.country. Enter key triggers add.
+- Storage stays the existing `product.country String?` (name string) — new products write the selected country NAME; legacy products' free-text country values remain untouched (no migration).
+
+Patch 3 — Product type + type-specific fields:
+- Added a required "نوع محصول" Select (4 options: دستگاه/مواد/ابزار/مصرفی) immediately after the category block.
+- Added a conditional "مشخصات اختصاصی" section (appears only when productType is set) right before the Super-Prompt section, with fields that change per type:
+  - دستگاه: مدل دقیق (text), مشخصات فنی کلیدی (text), قابلیت اتوکلاو شدن (toggle).
+  - مواد: حجم/وزن بسته‌بندی (text), نوع کیورینگ (select: نوری/خودسخت‌شونده/دوال‌کیور/ندارد), تاریخ انقفا (date, optional).
+  - ابزار: جنس (select: استیل ضدزنگ/تیتانیوم/پلاستیک/سایر), محتویات بسته (text).
+  - مصرفی: سایز (text), جنس (text), تعداد در بسته (number).
+- All type-specific fields are optional. Stored in `typeFields` JSON string (cleaned: empty/false values stripped before save). On edit, parsed back into the form.
+- handleSave validates productType is required (toast error if empty).
+
+Patch 4 — Custom specs section:
+- Added "ویژگی‌های سفارشی" section after the description field, before the SEO section.
+- "+ افزودن ویژگی جدید" button adds an empty row. Each row: "نام ویژگی" Input + "مقدار" Input + a red × delete button.
+- Rows stored in `customSpecs` JSON string as [{label, value}] (empty rows filtered before save). On edit, parsed back into the form.
+
+API (src/app/api/admin/products/route.ts):
+- POST: accepts + persists productType, typeFields, customSpecs (all nullable); removed lowStock.
+- PUT: accepts + updates productType, typeFields, customSpecs (with `!== undefined` guards so partial updates work — e.g. the toggleFeatured/toggleVisible quick actions that send only {id, name, featured} won't clobber the new fields); removed lowStock.
+
+Verification (Agent Browser + API, admin login admin/admin):
+- API: POST /api/admin/countries returned 14 seeded countries + created "استرالیا" and "کانادا" (test). GET works.
+- API: POST /api/admin/products with productType=device, typeFields={exactModel,keySpecs,autoclavable}, customSpecs=[{رنگ,آبی},{ولتاژ,220V}] created product 78 with all fields persisted. PUT switching to material type + new typeFields worked. DELETE worked.
+- UI: create-product dialog shows "نوع محصول *" select (4 options) right after category; "موجودی" select has only 2 options (موجود/ناموجود); the old "موجودی کم" threshold field is GONE.
+- UI: country field is a searchable combobox + "کشور جدید" button. Clicking the button reveals an inline input; typing "استرالیا" + افزودن created the country and auto-selected it (combobox showed "استرالیا").
+- UI: selecting "دستگاه" revealed مدل دقیق / مشخصات فنی کلیدی / قابلیت اتوکلاو شدن; switching to "مواد" revealed حجم/وزن / نوع کیورینگ / تاریخ انقفا and hid the device fields (conditional rendering confirmed via DOM text checks).
+- UI: "افزودن ویژگی جدید" added a row with "نام ویژگی" + "مقدار" inputs + a × delete button (aria-label "حذف ویژگی").
+- UI: end-to-end save — filled name + category (اندودانتیکس) + brand (Dentsply) + productType (مواد) + country (استرالیا), clicked "ایجاد محصول" → toast "محصول ایجاد شد". API confirmed the saved product (id 79) had country=استرالیا, productType=material.
+- Storefront: removed the "فقط N عدد مانده" badge; public /api/products?discounted=true returns 200 (no lowStock column errors after dev server restart to pick up regenerated Prisma client).
+- Restarted dev server (start-dev.sh) so the running process loaded the regenerated Prisma client (the old cached client was still querying the dropped lowStock column → P2022 errors before restart).
+- Lint: clean (only the pre-existing unrelated error in mersadent-clone/examples/websocket/frontend.tsx).
+- Cleaned up all test data (deleted test products 78 & 79, deleted test countries استرالیا & کانادا).
+
+Stage Summary:
+- Patch 1 ✅: Inventory simplified to a single موجود/ناموجود select; the numeric lowStock threshold field and its column are removed from the form, DB, and storefront badge.
+- Patch 2 ✅: "کشور سازنده" is now a searchable dropdown (with 14 seeded countries) backed by a new Country table, with an inline "+ کشور جدید" quick-add that creates the country and auto-selects it. Legacy free-text country values on existing products are untouched.
+- Patch 3 ✅: A required "نوع محصول" field (دستگاه/مواد/ابزار/مصرفی) sits right after the category picker, and a conditional "مشخصات اختصاصی" section renders type-specific fields (all optional) stored as JSON in typeFields.
+- Patch 4 ✅: A "ویژگی‌های سفارشی" section (after description, before SEO) lets admins add/remove label-value rows, stored as JSON in customSpecs.
+- All untouched sections (category cascader, brand, price/discount, AI super-prompt, strengths/weaknesses, description, SEO) remain intact.

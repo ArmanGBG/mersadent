@@ -29,6 +29,15 @@ model Brand {
   products Product[]
 }
 
+// Lookup table for countries of origin. The Product.country column stays a free-text
+// string (for backwards compat with legacy products); new products pick a name from
+// this table via the admin searchable select. No FK relation by design.
+model Country {
+  id    Int    @id @default(autoincrement())
+  name  String @unique
+  order Int    @default(0)
+}
+
 model Product {
   id              Int      @id @default(autoincrement())
   name            String
@@ -37,16 +46,18 @@ model Product {
   model           String?
   price           Int?
   priceType       String   @default("fixed") // "fixed" | "call"
-  availability    String   @default("in_stock") // "in_stock" | "out_of_stock" | "call"
+  availability    String   @default("in_stock") // "in_stock" | "out_of_stock" (varchar, not a number)
   specs           String?  // JSON: Record<string, string> dynamic key-value specs
   discountPercent Float    @default(0) // 0-100
   description     String?  // Full product description (HTML)
   strengths       String?  // JSON array of strings
   weaknesses      String?  // JSON array of strings
-  country         String?  // Country of origin, e.g. "ایران", "چین"
+  country         String?  // Country of origin name (free-text; new products use Country table)
   warranty        String?  // e.g. "۱ سال گارانتی"
   weight          String?  // e.g. "۱۰۶ گرم"
-  lowStock        Int      @default(0) // 0 = not tracked; >0 = "only N left"
+  productType     String?  // "device" | "material" | "tool" | "consumable"
+  typeFields      String?  // JSON: type-specific fields (key/value), all optional
+  customSpecs     String?  // JSON: [{label, value}] custom spec rows, all optional
   metaTitle       String?
   metaDescription String?
   keywords        String?  // comma-separated keywords
@@ -69,6 +80,7 @@ model Product {
   @@index([name])
   @@index([discountPercent])
   @@index([sku])
+  @@index([productType])
 }
 
 model ProductImage {
