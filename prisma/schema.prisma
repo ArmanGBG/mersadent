@@ -17,6 +17,7 @@ model Category {
   products Product[]
   order    Int       @default(0)
   visible  Boolean   @default(true)
+  image    String?   // Optional logo/photo for the category (used in storefront grid + mega-menu)
 }
 
 model Brand {

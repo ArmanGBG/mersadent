@@ -73,6 +73,7 @@ interface CategoryChild {
   name: string;
   slug: string;
   parentId: number;
+  image?: string | null;
   children: CategoryChild[];
   productCount: number;
   order: number;
@@ -83,6 +84,7 @@ interface Category {
   name: string;
   slug: string;
   parentId: number | null;
+  image?: string | null;
   children: CategoryChild[];
   productCount: number;
   order: number;
@@ -828,33 +830,113 @@ function Header({
 // ============================================================
 // HERO SLIDER
 // ============================================================
-const heroSlides = [
+interface HeroSlide {
+  image: string;
+  title: string;
+  subtitle: string;
+  link?: string;
+  objectPosition?: string;
+}
+
+const DEFAULT_HERO_SLIDES: HeroSlide[] = [
   {
     image: '/hero-slide-1.png',
     title: 'یونیت دندانپزشکی',
     subtitle: 'بهترین برندهای یونیت با گارانتی اصالت و قیمت مناسب',
     objectPosition: 'center',
+    link: '',
   },
   {
     image: '/hero-slide-2.png',
     title: 'تجهیزات دیجیتال',
     subtitle: 'اسکنر، سنسور و تجهیزات دیجیتال دندانپزشکی',
     objectPosition: 'center',
+    link: '',
   },
   {
     image: '/hero-slide-3.png',
     title: 'سرویس و تعمیرات',
     subtitle: 'تعمیر تخصصی تمامی تجهیزات دندانپزشکی توسط تیم متخصص',
     objectPosition: 'center',
+    link: '',
   },
 ];
+
+// Resolve a hero slide's CTA link into a navigation action.
+// - Internal app paths like "/category/all" → in-app navigation
+// - Empty link → default "all categories" view
+// - External URLs (http/https) → open in new tab via window.open
+function resolveHeroLink(link: string | undefined, onNavigate: (view: PageView) => void) {
+  const trimmed = (link || '').trim();
+  if (!trimmed) {
+    onNavigate({ type: 'category', categoryId: 0, slug: 'all' });
+    return;
+  }
+  if (/^https?:\/\//i.test(trimmed)) {
+    window.open(trimmed, '_blank', 'noopener,noreferrer');
+    return;
+  }
+  // Internal path: try to parse common patterns
+  // /category/all, /category/<id>, /category/<slug>, /brand/all, /about, /search?q=...
+  const catMatch = trimmed.match(/^\/category\/(.+)$/);
+  if (catMatch) {
+    const rest = catMatch[1];
+    if (rest === 'all') {
+      onNavigate({ type: 'category', categoryId: 0, slug: 'all' });
+    } else if (/^\d+$/.test(rest)) {
+      onNavigate({ type: 'category', categoryId: parseInt(rest), slug: rest });
+    } else {
+      onNavigate({ type: 'category', categoryId: 0, slug: rest });
+    }
+    return;
+  }
+  if (/^\/brand(\/|$)/.test(trimmed)) {
+    onNavigate({ type: 'brand', brandId: 0, brandName: 'all' });
+    return;
+  }
+  if (/^\/about/.test(trimmed)) {
+    onNavigate({ type: 'about' });
+    return;
+  }
+  if (/^\/blog/.test(trimmed)) {
+    onNavigate({ type: 'blog' });
+    return;
+  }
+  if (/^\/search\?/.test(trimmed)) {
+    const q = new URLSearchParams(trimmed.split('?')[1]).get('q') || '';
+    onNavigate({ type: 'search', query: q });
+    return;
+  }
+  // Fallback: open as external/new-tab
+  window.open(trimmed, '_blank', 'noopener,noreferrer');
+}
 
 function HeroSlider({ onNavigate }: { onNavigate: (view: PageView) => void }) {
   const [current, setCurrent] = useState(0);
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const [heroSlides, setHeroSlides] = useState<HeroSlide[]>(DEFAULT_HERO_SLIDES);
+  const [loaded, setLoaded] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const touchStartX = useRef(0);
   const currentRef = useRef(0);
+
+  // Fetch admin-configured slides
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/hero')
+      .then(r => r.json())
+      .then(d => {
+        if (cancelled) return;
+        if (Array.isArray(d.slides) && d.slides.length > 0) {
+          setHeroSlides(d.slides.map((s: HeroSlide) => ({ ...s, objectPosition: 'center' })));
+        }
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoaded(true); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const slidesCount = heroSlides.length;
 
   const goTo = useCallback((index: number) => {
     if (isTransitioning) return;
@@ -864,22 +946,24 @@ function HeroSlider({ onNavigate }: { onNavigate: (view: PageView) => void }) {
     setTimeout(() => setIsTransitioning(false), 700);
   }, [isTransitioning]);
 
-  const next = useCallback(() => goTo((current + 1) % heroSlides.length), [current, goTo]);
-  const prev = useCallback(() => goTo((current - 1 + heroSlides.length) % heroSlides.length), [current, goTo]);
+  const next = useCallback(() => goTo((current + 1) % slidesCount), [current, goTo, slidesCount]);
+  const prev = useCallback(() => goTo((current - 1 + slidesCount) % slidesCount), [current, goTo, slidesCount]);
 
   // Auto-play
   useEffect(() => {
+    if (!loaded || slidesCount <= 1) return;
     intervalRef.current = setInterval(() => {
-      goTo((currentRef.current + 1) % heroSlides.length);
+      goTo((currentRef.current + 1) % slidesCount);
     }, 6000);
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [goTo, heroSlides.length]);
+  }, [goTo, slidesCount, loaded]);
 
   // Pause on hover
   const pause = () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   const resume = () => {
+    if (slidesCount <= 1) return;
     intervalRef.current = setInterval(() => {
-      goTo((currentRef.current + 1) % heroSlides.length);
+      goTo((currentRef.current + 1) % slidesCount);
     }, 6000);
   };
 
@@ -890,7 +974,7 @@ function HeroSlider({ onNavigate }: { onNavigate: (view: PageView) => void }) {
     if (Math.abs(diff) > 50) { if (diff > 0) next(); else prev(); }
   };
 
-  const slide = heroSlides[current];
+  const slide = heroSlides[current] || heroSlides[0];
 
   return (
     <section
@@ -911,7 +995,7 @@ function HeroSlider({ onNavigate }: { onNavigate: (view: PageView) => void }) {
             src={s.image}
             alt={s.title}
             className="w-full h-full object-cover"
-            style={{ objectPosition: s.objectPosition }}
+            style={{ objectPosition: s.objectPosition || 'center' }}
             loading={i === 0 ? 'eager' : 'lazy'}
           />
         </div>
@@ -940,7 +1024,7 @@ function HeroSlider({ onNavigate }: { onNavigate: (view: PageView) => void }) {
               </p>
               <div className="flex flex-wrap gap-3">
                 <Button
-                  onClick={() => onNavigate({ type: 'category', categoryId: 0, slug: 'all' })}
+                  onClick={() => resolveHeroLink(slide.link, onNavigate)}
                   className="bg-mersadent-accent hover:bg-mersadent-accent/90 text-white rounded-xl px-5 sm:px-6 h-10 sm:h-11 font-semibold text-sm sm:text-base"
                 >
                   مشاهده تجهیزات
@@ -959,37 +1043,43 @@ function HeroSlider({ onNavigate }: { onNavigate: (view: PageView) => void }) {
         </div>
       </div>
 
-      {/* Arrow buttons */}
-      <button
-        onClick={prev}
-        className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 z-30 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/15 hover:bg-white/25 backdrop-blur-sm border border-white/20 text-white flex items-center justify-center transition-colors"
-        aria-label="اسلاید قبلی"
-      >
-        <ChevronRight className="w-5 h-5" />
-      </button>
-      <button
-        onClick={next}
-        className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 z-30 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/15 hover:bg-white/25 backdrop-blur-sm border border-white/20 text-white flex items-center justify-center transition-colors"
-        aria-label="اسلاید بعدی"
-      >
-        <ChevronLeft className="w-5 h-5" />
-      </button>
+      {/* Arrow buttons — only when more than 1 slide */}
+      {slidesCount > 1 && (
+        <>
+          <button
+            onClick={prev}
+            className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 z-30 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/15 hover:bg-white/25 backdrop-blur-sm border border-white/20 text-white flex items-center justify-center transition-colors"
+            aria-label="اسلاید قبلی"
+          >
+            <ChevronRight className="w-5 h-5" />
+          </button>
+          <button
+            onClick={next}
+            className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 z-30 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/15 hover:bg-white/25 backdrop-blur-sm border border-white/20 text-white flex items-center justify-center transition-colors"
+            aria-label="اسلاید بعدی"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+        </>
+      )}
 
       {/* Dot indicators */}
-      <div className="absolute bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2">
-        {heroSlides.map((_, i) => (
-          <button
-            key={i}
-            onClick={() => goTo(i)}
-            className={`rounded-full transition-all duration-300 ${
-              i === current
+      {slidesCount > 1 && (
+        <div className="absolute bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2">
+          {heroSlides.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => goTo(i)}
+              className={`rounded-full transition-all duration-300 ${
+                i === current
                 ? 'w-7 h-2.5 bg-mersadent-accent'
                 : 'w-2.5 h-2.5 bg-white/50 hover:bg-white/80'
             }`}
             aria-label={`اسلاید ${i + 1}`}
           />
         ))}
-      </div>
+        </div>
+      )}
     </section>
   );
 }
@@ -1129,8 +1219,12 @@ function HomePage({ onNavigate, user, onAuthRequired, onAddToCart }: { onNavigat
                 })}
                 className="flex flex-col items-center gap-2 p-3 sm:p-4 bg-white rounded-xl border border-gray-100 hover:border-mersadent-accent/30 hover:shadow-md transition-all group"
               >
-                <div className="p-2.5 rounded-xl bg-mersadent-bg group-hover:bg-mersadent-accent/10 text-mersadent-dark group-hover:text-mersadent-accent transition-colors">
-                  {getCategoryIcon(cat.slug)}
+                <div className="p-2.5 rounded-xl bg-mersadent-bg group-hover:bg-mersadent-accent/10 text-mersadent-dark group-hover:text-mersadent-accent transition-colors overflow-hidden">
+                  {cat.image ? (
+                    <img src={cat.image} alt={cat.name} className="w-7 h-7 sm:w-8 sm:h-8 object-contain" />
+                  ) : (
+                    getCategoryIcon(cat.slug)
+                  )}
                 </div>
                 <div className="text-center">
                   <span className="text-[11px] sm:text-xs font-semibold text-mersadent-dark block">{cat.name}</span>
@@ -1344,8 +1438,12 @@ function CategoryAllPage({ categories, onNavigate }: { categories: Category[]; o
         {categories.map((cat) => (
           <div key={cat.id} className="bg-white rounded-2xl border border-gray-100 p-5 sm:p-6">
             <div className="flex items-center gap-3 mb-4">
-              <div className="p-2.5 rounded-xl bg-mersadent-accent/10 text-mersadent-accent">
-                {getCategoryIcon(cat.slug)}
+              <div className="p-2.5 rounded-xl bg-mersadent-accent/10 text-mersadent-accent overflow-hidden">
+                {cat.image ? (
+                  <img src={cat.image} alt={cat.name} className="w-7 h-7 sm:w-8 sm:h-8 object-contain" />
+                ) : (
+                  getCategoryIcon(cat.slug)
+                )}
               </div>
               <div>
                 <h2 className="text-base sm:text-lg font-bold text-mersadent-dark">{cat.name}</h2>

@@ -14,15 +14,19 @@ const DEFAULT_SETTINGS: Record<string, string> = {
   hero_slide_1_title: 'یونیت دندانپزشکی',
   hero_slide_1_subtitle: 'بهترین برندهای یونیت با گارانتی اصالت و قیمت مناسب',
   hero_slide_1_image: '/hero-slide-1.png',
+  hero_slide_1_link: '',
   hero_slide_2_title: 'تجهیزات دیجیتال',
   hero_slide_2_subtitle: 'اسکنر، سنسور و تجهیزات دیجیتال دندانپزشکی',
   hero_slide_2_image: '/hero-slide-2.png',
+  hero_slide_2_link: '',
   hero_slide_3_title: 'سرویس و تعمیرات',
   hero_slide_3_subtitle: 'تعمیر تخصصی تمامی تجهیزات دندانپزشکی توسط تیم متخصص',
   hero_slide_3_image: '/hero-slide-3.png',
+  hero_slide_3_link: '',
   hero_slide_4_title: 'تجهیزات دندانپزشکی پیشرفته',
   hero_slide_4_subtitle: 'کیفیت و تکنولوژی برای سلامت دهان و دندان',
   hero_slide_4_image: '/hero-slide-4.png',
+  hero_slide_4_link: '',
 };
 
 async function auth(req: NextRequest) {

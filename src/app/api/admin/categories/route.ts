@@ -126,7 +126,7 @@ export async function POST(request: NextRequest) {
   if (err) return err;
 
   try {
-    const { name, slug, parentId, visible } = await request.json();
+    const { name, slug, parentId, visible, image } = await request.json();
     if (!name) return NextResponse.json({ error: 'نام دسته‌بندی الزامی است' }, { status: 400 });
 
     // Determine the next order at this level
@@ -144,6 +144,7 @@ export async function POST(request: NextRequest) {
         parentId: parentId ? parseInt(parentId) : null,
         order: nextOrder,
         visible: visible !== undefined ? !!visible : true,
+        image: image || null,
       },
     });
 
@@ -161,7 +162,7 @@ export async function PUT(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { id, name, slug, parentId, visible } = body;
+    const { id, name, slug, parentId, visible, image } = body;
     if (!id) return NextResponse.json({ error: 'شناسه الزامی است' }, { status: 400 });
 
     const categoryId = parseInt(id);
@@ -172,6 +173,8 @@ export async function PUT(request: NextRequest) {
     if (parentId !== undefined) {
       updateData.parentId = parentId ? parseInt(parentId) : null;
     }
+    // image can be a URL string or null (to clear)
+    if (image !== undefined) updateData.image = image || null;
 
     // Handle visibility cascade
     if (visible !== undefined) {

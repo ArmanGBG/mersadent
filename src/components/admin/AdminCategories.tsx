@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -29,7 +29,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import {
   Plus, Pencil, Trash2, ChevronDown, ChevronLeft, FolderOpen, Loader2,
-  GripVertical, Eye, EyeOff, ArrowDown, ArrowUp, ListTree,
+  GripVertical, Eye, EyeOff, ArrowDown, ArrowUp, ListTree, ImagePlus, X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { adminFetch, toSlug } from '@/lib/admin-utils';
@@ -41,6 +41,7 @@ interface CategoryNode {
   parentId: number | null;
   order: number;
   visible?: boolean;
+  image?: string | null;
   children?: CategoryNode[];
   _count?: { products: number; children: number };
   totalProducts?: number; // aggregated: own + all descendants' products
@@ -53,11 +54,12 @@ interface FlatCat {
   parentId: number | null;
   order: number;
   visible?: boolean;
+  image?: string | null;
   _count?: { products: number; children: number };
   totalProducts?: number; // aggregated: own + all descendants' products
 }
 
-const emptyForm = { name: '', slug: '', parentId: '', visible: true };
+const emptyForm = { name: '', slug: '', parentId: '', visible: true, image: '' as string | null };
 
 export function AdminCategories({ token }: { token: string }) {
   const [categories, setCategories] = useState<CategoryNode[]>([]);
@@ -72,6 +74,8 @@ export function AdminCategories({ token }: { token: string }) {
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [activeDragId, setActiveDragId] = useState<number | null>(null);
   const [reordering, setReordering] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -117,8 +121,52 @@ export function AdminCategories({ token }: { token: string }) {
       slug: c.slug,
       parentId: c.parentId ? String(c.parentId) : '',
       visible: c.visible !== false,
+      image: c.image || '',
     });
     setDialogOpen(true);
+  };
+
+  // ---- Image upload ----
+  const handleImageUpload = async (file: File) => {
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('حجم فایل نباید بیشتر از ۲ مگابایت باشد');
+      return;
+    }
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      if (editing) fd.append('categoryId', String(editing.id));
+      const res = await fetch('/api/admin/categories/upload', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      });
+      const data = await res.json();
+      if (data.error) { toast.error(data.error); return; }
+      setForm(f => ({ ...f, image: data.url }));
+      toast.success('تصویر آپلود شد');
+    } catch {
+      toast.error('خطا در آپلود تصویر');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const removeImage = async () => {
+    if (editing && form.image) {
+      // Persist null to the DB for existing categories
+      try {
+        await adminFetch(token, '/api/admin/categories', {
+          method: 'PUT',
+          body: JSON.stringify({ id: editing.id, name: form.name, image: null }),
+        });
+      } catch {
+        // ignore — local state is still cleared
+      }
+    }
+    setForm(f => ({ ...f, image: '' }));
+    toast.success('تصویر حذف شد');
   };
 
   const handleSave = async () => {
@@ -130,6 +178,7 @@ export function AdminCategories({ token }: { token: string }) {
         slug: form.slug || toSlug(form.name),
         parentId: form.parentId ? parseInt(form.parentId) : null,
         visible: form.visible,
+        image: form.image || null,
       };
 
       let res;
@@ -365,7 +414,11 @@ export function AdminCategories({ token }: { token: string }) {
           ) : (
             <span className="w-4" />
           )}
-          <FolderOpen className={`w-4 h-4 flex-shrink-0 ${isVisible ? 'text-amber-500' : 'text-gray-300'}`} />
+          {c.image ? (
+            <img src={c.image} alt={c.name} className="w-6 h-6 rounded-md object-cover flex-shrink-0 border border-gray-200" />
+          ) : (
+            <FolderOpen className={`w-4 h-4 flex-shrink-0 ${isVisible ? 'text-amber-500' : 'text-gray-300'}`} />
+          )}
           <span className={`font-medium truncate ${!isVisible ? 'text-gray-400 line-through' : ''}`}>{c.name}</span>
           {!isVisible && (
             <Badge variant="outline" className="text-[10px] text-gray-400 border-gray-300 bg-gray-50">پنهان</Badge>
@@ -544,6 +597,62 @@ export function AdminCategories({ token }: { token: string }) {
           )}
 
           <div className="space-y-4 mt-2">
+            {/* Category image upload */}
+            <div className="space-y-2">
+              <Label>تصویر / لوگو دسته‌بندی</Label>
+              <div className="flex items-center gap-4">
+                <div className="relative w-20 h-20 rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden flex-shrink-0">
+                  {form.image ? (
+                    <>
+                      <img src={form.image} alt="پیش‌نمایش" className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={removeImage}
+                        className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center hover:bg-red-600"
+                        aria-label="حذف تصویر"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </>
+                  ) : (
+                    <FolderOpen className="w-8 h-8 text-gray-300" />
+                  )}
+                </div>
+                <div className="flex-1 space-y-2">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) handleImageUpload(f);
+                      e.target.value = '';
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                  >
+                    {uploading ? (
+                      <><Loader2 className="w-4 h-4 ml-1.5 animate-spin" /> در حال آپلود...</>
+                    ) : form.image ? (
+                      <><ImagePlus className="w-4 h-4 ml-1.5" /> تغییر تصویر</>
+                    ) : (
+                      <><ImagePlus className="w-4 h-4 ml-1.5" /> آپلود تصویر</>
+                    )}
+                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    فرمت‌های مجاز: PNG, JPG, WebP, SVG, GIF (حداکثر ۲ مگابایت).
+                    {!editing && form.image && ' هنگام ذخیره دسته ثبت می‌شود.'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
             <div className="space-y-2">
               <Label>نام *</Label>
               <Input value={form.name} onChange={e => { setForm(f => ({ ...f, name: e.target.value })); if (!editing) setForm(ff => ({ ...ff, slug: toSlug(e.target.value) })); }} />

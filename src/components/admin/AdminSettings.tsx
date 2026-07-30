@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
-import { Save, Loader2, Globe, Phone, Mail, MapPin, Instagram, MessageCircle } from 'lucide-react';
+import { Save, Loader2, Globe, Phone, Mail, MapPin, Instagram, MessageCircle, ImagePlus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { adminFetch } from '@/lib/admin-utils';
 
@@ -15,6 +15,8 @@ export function AdminSettings({ token }: { token: string }) {
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingSlide, setUploadingSlide] = useState<number | null>(null);
+  const fileInputRefs = useRef<Record<number, HTMLInputElement | null>>({});
 
   useEffect(() => {
     adminFetch(token, '/api/admin/settings')
@@ -24,6 +26,33 @@ export function AdminSettings({ token }: { token: string }) {
   }, [token]);
 
   const update = (key: string, value: string) => setSettings(prev => ({ ...prev, [key]: value }));
+
+  // ---- Hero image upload ----
+  const handleHeroUpload = async (slideNum: number, file: File) => {
+    if (file.size > 4 * 1024 * 1024) {
+      toast.error('حجم فایل نباید بیشتر از ۴ مگابایت باشد');
+      return;
+    }
+    setUploadingSlide(slideNum);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('slide', String(slideNum));
+      const res = await fetch('/api/admin/hero/upload', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      });
+      const data = await res.json();
+      if (data.error) { toast.error(data.error); return; }
+      update(`hero_slide_${slideNum}_image`, data.url);
+      toast.success('تصویر اسلاید آپلود شد');
+    } catch {
+      toast.error('خطا در آپلود تصویر');
+    } finally {
+      setUploadingSlide(null);
+    }
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -124,36 +153,102 @@ export function AdminSettings({ token }: { token: string }) {
           <CardTitle className="text-base">تنظیمات اسلایدشو (هیرو)</CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
-          {[1, 2, 3, 4].map(i => (
-            <div key={i} className="space-y-3">
-              <h4 className="font-medium text-sm">اسلاید {i}</h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {[1, 2, 3, 4].map(i => {
+            const imgVal = settings[`hero_slide_${i}_image`] || '';
+            return (
+              <div key={i} className="space-y-3">
+                <h4 className="font-medium text-sm">اسلاید {i}</h4>
+
+                {/* Image upload */}
                 <div className="space-y-1.5">
-                  <Label className="text-xs">عنوان</Label>
-                  <Input
-                    value={settings[`hero_slide_${i}_title`] || ''}
-                    onChange={e => update(`hero_slide_${i}_title`, e.target.value)}
-                  />
+                  <Label className="text-xs">تصویر اسلاید</Label>
+                  <div className="flex items-center gap-3">
+                    <div className="relative w-32 h-16 rounded-lg border-2 border-dashed border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden flex-shrink-0">
+                      {imgVal ? (
+                        <>
+                          <img src={imgVal} alt={`پیش‌نمایش اسلاید ${i}`} className="w-full h-full object-cover" />
+                          <button
+                            type="button"
+                            onClick={() => update(`hero_slide_${i}_image`, '')}
+                            className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center hover:bg-red-600"
+                            aria-label="حذف تصویر"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </>
+                      ) : (
+                        <ImagePlus className="w-6 h-6 text-gray-300" />
+                      )}
+                    </div>
+                    <div className="flex-1 space-y-1.5">
+                      <input
+                        ref={(el) => { fileInputRefs.current[i] = el; }}
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif"
+                        className="hidden"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) handleHeroUpload(i, f);
+                          e.target.value = '';
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => fileInputRefs.current[i]?.click()}
+                        disabled={uploadingSlide === i}
+                      >
+                        {uploadingSlide === i ? (
+                          <><Loader2 className="w-4 h-4 ml-1.5 animate-spin" /> در حال آپلود...</>
+                        ) : imgVal ? (
+                          <><ImagePlus className="w-4 h-4 ml-1.5" /> تغییر تصویر</>
+                        ) : (
+                          <><ImagePlus className="w-4 h-4 ml-1.5" /> آپلود تصویر</>
+                        )}
+                      </Button>
+                      <p className="text-[11px] text-muted-foreground">
+                        تصویر با ابعاد افقی (مثلاً ۱۹۲۰×۱۰۸۰). حداکثر ۴ مگابایت.
+                      </p>
+                    </div>
+                  </div>
                 </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">عنوان</Label>
+                    <Input
+                      value={settings[`hero_slide_${i}_title`] || ''}
+                      onChange={e => update(`hero_slide_${i}_title`, e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">زیرعنوان</Label>
+                    <Input
+                      value={settings[`hero_slide_${i}_subtitle`] || ''}
+                      onChange={e => update(`hero_slide_${i}_subtitle`, e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                {/* Optional purchase / navigation link */}
                 <div className="space-y-1.5">
-                  <Label className="text-xs">زیرعنوان</Label>
+                  <Label className="text-xs">لینک خرید (اختیاری)</Label>
                   <Input
-                    value={settings[`hero_slide_${i}_subtitle`] || ''}
-                    onChange={e => update(`hero_slide_${i}_subtitle`, e.target.value)}
+                    value={settings[`hero_slide_${i}_link`] || ''}
+                    onChange={e => update(`hero_slide_${i}_link`, e.target.value)}
+                    placeholder="مثلاً /category/all یا https://example.com/product"
+                    dir="ltr"
                   />
+                  <p className="text-[11px] text-muted-foreground">
+                    اگر پر کنید، دکمه‌ی «مشاهده تجهیزات» روی این اسلاید به این آدرس هدایت می‌شود. خالی بگذارید تا رفتار پیش‌فرض (رفتن به همه دسته‌بندی‌ها) حفظ شود.
+                  </p>
                 </div>
+
+                {i < 4 && <Separator />}
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">لینک تصویر</Label>
-                <Input
-                  value={settings[`hero_slide_${i}_image`] || ''}
-                  onChange={e => update(`hero_slide_${i}_image`, e.target.value)}
-                  dir="ltr"
-                />
-              </div>
-              {i < 4 && <Separator />}
-            </div>
-          ))}
+            );
+          })}
         </CardContent>
       </Card>
 

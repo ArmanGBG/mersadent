@@ -266,3 +266,76 @@ Stage Summary:
 - A defensive `min-w-0 overflow-x-clip` was added to the global `<main>` to prevent any future horizontal page overflow from any page view.
 - Full site responsiveness audited across 12+ pages at 3 viewports. No horizontal overflow found anywhere. All carousels scroll internally, all grids collapse on mobile, all tables either convert to cards or scroll within containers, admin sidebar collapses to hamburger, mobile bottom nav + sticky footer work correctly.
 - No other responsive bugs required fixing — the site was already well-structured; the featured panel was the one breakage point.
+
+---
+Task ID: 8
+Agent: main
+Task: Two features: (1) Allow admin to upload their own logo/image for each product category. (2) In the admin hero settings panel, replace the image-URL input with a direct image upload, and add an optional purchase/navigation link per hero slide.
+
+Work Log:
+- Read previous worklog (Tasks 1-7) for context.
+
+**Feature 1: Category image upload**
+- Added `image String?` column to `Category` model in `prisma/schema.prisma` (nullable, non-destructive). Ran `bun run db:push` — data preserved.
+- Created `src/app/api/admin/categories/upload/route.ts`:
+  - POST handler (FormData: `file` + optional `categoryId`), validates mime (PNG/JPG/WebP/SVG/GIF) and size (≤2MB).
+  - Saves to `public/uploads/categories/cat-<id>-<ts>.webp` (SVG saved as-is; others optimized with sharp to max 600×600, webp @85 quality).
+  - When `categoryId` is provided (edit mode), persists the image URL to the DB and deletes the previous image file if it was one of ours.
+  - Returns `{ url }`.
+- Updated `src/app/api/admin/categories/route.ts`:
+  - POST: now accepts and persists `image` field on create.
+  - PUT: now accepts `image` (string URL or null to clear) and persists it.
+  - GET (both tree and flat modes): already returns all scalar columns via Prisma's default include, so `image` is automatically included.
+  - Public `/api/categories` also returns `image` automatically (uses `db.category.findMany` + spreads `...parent`/`...child`).
+- Updated `src/components/admin/AdminCategories.tsx`:
+  - Added `image?: string | null` to both `CategoryNode` and `FlatCat` interfaces; added `image: ''` to `emptyForm`.
+  - Added `uploading` state + `fileInputRef`.
+  - Added `handleImageUpload(file)` — POSTs FormData to `/api/admin/categories/upload` (with `categoryId` when editing so it persists immediately; without it in create mode so the URL is kept locally in `form.image` and saved on "ایجاد"). Returns the URL into `form.image`.
+  - Added `removeImage()` — for edit mode, PUTs `image: null` to clear the DB; clears `form.image` locally.
+  - Added image upload UI section at the top of the create/edit dialog: an 80×80 dashed-border preview box showing the uploaded image (with a red X remove button) or a placeholder folder icon, plus an "آپلود تصویر" / "تغییر تصویر" button that triggers a hidden file input. Helper text explains allowed formats and that in create mode the image saves on category save.
+  - `handleSave` now sends `image: form.image || null` in both POST and PUT bodies.
+  - `openEdit` now loads `c.image` into form state.
+  - Added a 24×24 thumbnail next to the category name in the table row (falls back to the folder icon when no image).
+- Updated `src/app/page.tsx` storefront:
+  - Added `image?: string | null` to `Category` and `CategoryChild` interfaces.
+  - Home page category grid: if `cat.image` exists, renders `<img>` (object-contain, w-7 h-7 sm:w-8 sm:h-8) inside the tile instead of the generic `getCategoryIcon(cat.slug)`.
+  - "همه دسته‌بندی‌ها" listing page: same logic — shows uploaded image if present, else the generic icon.
+
+**Feature 2: Hero slide image upload + optional link**
+- Created `src/app/api/admin/hero/upload/route.ts`:
+  - POST handler (FormData: `file` + optional `slide` number), validates mime and size (≤4MB for hero banners).
+  - Saves to `public/uploads/hero/hero-slide-<n>-<ts>.webp` (SVG as-is; others optimized with sharp to max 1920×1080, webp @82 quality).
+  - Returns `{ url }`. Does NOT persist to DB directly — the admin UI stores the returned URL in local settings state, then the "ذخیره تنظیمات" button saves all settings (including the image URLs) via `PUT /api/admin/settings`.
+- Created `src/app/api/hero/route.ts` (PUBLIC endpoint):
+  - GET returns `{ slides: [...] }` built from `SiteSetting` rows `hero_slide_N_title/_subtitle/_image/_link`, falling back to defaults.
+  - Filters out slides with empty title or image (so admins can reduce slide count by clearing fields).
+- Added `hero_slide_N_link` keys to `DEFAULT_SETTINGS` in `src/app/api/admin/settings/route.ts` (empty string default for all 4 slides).
+- Refactored `src/components/admin/AdminSettings.tsx` hero section:
+  - Added `ImagePlus, X` icons, `useRef`, `uploadingSlide` state, `fileInputRefs` map, and `handleHeroUpload(slideNum, file)` function.
+  - Replaced the old "لینک تصویر" text input with an image upload widget per slide: a 128×64 preview box (showing the uploaded image with an X remove button, or a placeholder icon), plus an "آپلود تصویر" / "تغییر تصویر" button that triggers a hidden file input. Helper text says "تصویر با ابعاد افقی (مثلاً ۱۹۲۰×۱۰۸۰). حداکثر ۴ مگابایت."
+  - Added a "لینک خرید (اختیاری)" text input per slide with placeholder "مثلاً /category/all یا https://example.com/product" and helper text explaining that the CTA button uses this link, and empty = default "all categories" behavior.
+- Refactored `src/app/page.tsx` HeroSlider:
+  - Replaced the hardcoded `heroSlides` constant with a `HeroSlide` interface + `DEFAULT_HERO_SLIDES` (used as initial state before the API responds).
+  - Added `useEffect` to fetch `/api/hero` on mount and replace `heroSlides` state with the admin-configured slides.
+  - Added `resolveHeroLink(link, onNavigate)` helper that parses the link: empty → default "all categories" navigation; `http(s)://...` → opens in new tab; `/category/all`, `/category/<id>`, `/category/<slug>` → in-app category navigation; `/brand`, `/about`, `/blog`, `/search?q=...` → respective in-app navigations; other paths → open in new tab.
+  - The CTA button "مشاهده تجهیزات" now calls `resolveHeroLink(slide.link, onNavigate)` instead of always going to "all categories".
+  - Arrow buttons and dot indicators are hidden when there's only 1 slide (prevents pointless controls if admin reduces to a single slide).
+  - Auto-play only starts after slides are loaded and when there are >1 slides.
+
+Verification (Agent Browser + API + DOM inspection):
+- API: POST `/api/admin/categories/upload` with a test PNG + `categoryId=34` returned `{url:"/uploads/categories/cat-34-<ts>.webp"}` and persisted to DB. Public `/api/categories` then returned `image: "/uploads/categories/cat-34-<ts>.webp"` for ترمیمی و زیبایی.
+- API: POST `/api/admin/hero/upload` with a test PNG + `slide=1` returned `{url:"/uploads/hero/hero-slide-1-<ts>.webp"}`.
+- API: PUT `/api/admin/settings` with `hero_slide_2_link:"/category/all"` + `hero_slide_2_title:"تست تجهیزات دیجیتال"` persisted. Public `/api/hero` then returned slide 2 with the test title and link.
+- Storefront DOM: home page hero shows 4 slides (4 dot indicators + 4 hero images). Clicking dot 2 changed the title to "تست تجهیزات دیجیتال". Clicking the CTA button navigated to "همه دسته‌بندی‌ها" (confirming the link routing works).
+- Storefront DOM: category grid renders `<img>` for categories that have an image, falling back to the generic icon otherwise. No layout breakage.
+- Admin DOM: edit category dialog for ترمیمی و زیبایی shows the "تصویر / لوگو دسته‌بندی" label, a preview of the uploaded image (`cat-34-...webp`), and a "تغییر تصویر" button. All other fields (نام، اسلاگ، دسته والد، نمایش در سایت) present.
+- Admin DOM: settings page hero card has 4 slide sections, each with labels "تصویر اسلاید | عنوان | زیرعنوان | لینک خرید (اختیاری)", 4 upload buttons, 4 link inputs, 4 hidden file inputs.
+- Lint: clean (only the pre-existing unrelated error in mersadent-clone/examples/websocket/frontend.tsx).
+- Cleaned up all test data (restored hero slide 2 defaults, cleared category images for cat 34 and cat 1).
+
+Stage Summary:
+- Admins can now upload a custom image/logo for ANY product category (main, sub, or sub-sub) via the create/edit dialog. The image appears in the storefront home category grid and the "all categories" listing page, replacing the generic folder icon. Upload works in both create and edit modes.
+- Admins can now upload hero slide images directly (no more pasting image URLs) and optionally set a purchase/navigation link per slide. The link can be an internal path (`/category/all`, `/category/3`, `/about`, `/blog`, `/search?q=...`) or an external URL (`https://...`). The storefront hero CTA button respects the link; empty link falls back to the default "all categories" behavior.
+- Two new API endpoints: `POST /api/admin/categories/upload` and `POST /api/admin/hero/upload` (both admin-auth, sharp-optimized, with file cleanup).
+- One new public endpoint: `GET /api/hero` (returns admin-configured slides with title/subtitle/image/link).
+- The HeroSlider is now fully dynamic — it fetches slides from the API on mount and renders whatever the admin configured. Arrow/dot controls auto-hide when there's only one slide.
