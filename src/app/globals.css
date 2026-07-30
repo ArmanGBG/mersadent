@@ -6,7 +6,7 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-vazirmatn);
   --font-mono: var(--font-geist-mono);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -51,18 +51,18 @@
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
+  --primary: #16233F;
+  --primary-foreground: #ffffff;
+  --secondary: #F7F9FA;
+  --secondary-foreground: #16233F;
+  --muted: #F7F9FA;
   --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  --accent: #2FC4C9;
+  --accent-foreground: #ffffff;
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --border: #e5e7eb;
+  --input: #e5e7eb;
+  --ring: #2FC4C9;
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
@@ -70,12 +70,15 @@
   --chart-5: oklch(0.769 0.188 70.08);
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary: #16233F;
   --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-accent: oklch(0.97 0 0);
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar-ring: #2FC4C9;
+  --mersadent-dark: #16233F;
+  --mersadent-accent: #2FC4C9;
+  --mersadent-bg: #F7F9FA;
 }
 
 .dark {
@@ -91,12 +94,12 @@
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
   --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
+  --accent: #2FC4C9;
+  --accent-foreground: #16233F;
   --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  --ring: #2FC4C9;
   --chart-1: oklch(0.488 0.243 264.376);
   --chart-2: oklch(0.696 0.17 162.48);
   --chart-3: oklch(0.769 0.188 70.08);
@@ -104,12 +107,12 @@
   --chart-5: oklch(0.645 0.246 16.439);
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-primary: #2FC4C9;
+  --sidebar-primary-foreground: #16233F;
   --sidebar-accent: oklch(0.269 0 0);
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --sidebar-ring: #2FC4C9;
 }
 
 @layer base {
@@ -118,5 +121,99 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-feature-settings: "ss02";
   }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #c4c4c4;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #a0a0a0;
+}
+
+/* Hide scrollbar for horizontal scroll areas */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* ===== Mersadent Brand Colors ===== */
+.bg-mersadent-dark { background-color: #16233F !important; }
+.text-mersadent-dark { color: #16233F !important; }
+.border-mersadent-dark { border-color: #16233F !important; }
+.bg-mersadent-accent { background-color: #2FC4C9 !important; }
+.text-mersadent-accent { color: #2FC4C9 !important; }
+.border-mersadent-accent { border-color: #2FC4C9 !important; }
+.bg-mersadent-bg { background-color: #F7F9FA !important; }
+.text-mersadent-bg { color: #F7F9FA !important; }
+.border-mersadent-bg { border-color: #F7F9FA !important; }
+
+/* ===== Blog Article Content Styles ===== */
+.blog-content h2 {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #16233F;
+  margin-top: 2rem;
+  margin-bottom: 0.75rem;
+}
+@media (min-width: 640px) {
+  .blog-content h2 { font-size: 1.25rem; }
+}
+.blog-content h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #16233F;
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+@media (min-width: 640px) {
+  .blog-content h3 { font-size: 1.125rem; }
+}
+.blog-content p {
+  color: #4B5563;
+  line-height: 1.8;
+  margin-bottom: 1rem;
+  font-size: 0.875rem;
+}
+@media (min-width: 640px) {
+  .blog-content p { font-size: 0.9375rem; }
+}
+.blog-content ul, .blog-content ol {
+  color: #4B5563;
+  margin-bottom: 1rem;
+  padding-right: 1.25rem;
+}
+.blog-content ul { list-style-type: disc; }
+.blog-content ol { list-style-type: decimal; }
+.blog-content li {
+  line-height: 1.8;
+  margin-bottom: 0.375rem;
+  font-size: 0.875rem;
+}
+@media (min-width: 640px) {
+  .blog-content li { font-size: 0.9375rem; }
+}
+.blog-content strong {
+  color: #16233F;
+  font-weight: 600;
+}
+.blog-content a {
+  color: #2FC4C9;
+  text-decoration: underline;
+}
+.blog-content a:hover {
+  opacity: 0.8;
 }
