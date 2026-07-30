@@ -33,11 +33,16 @@ export async function POST(request: NextRequest) {
   if (err) return err;
 
   try {
-    const { name, slug, visible } = await request.json();
+    const { name, slug, logo, visible } = await request.json();
     if (!name) return NextResponse.json({ error: 'نام برند الزامی است' }, { status: 400 });
 
     const brand = await db.brand.create({
-      data: { name, slug: slug || toSlug(name), visible: visible ?? true },
+      data: {
+        name,
+        slug: slug || toSlug(name),
+        logo: logo || null,
+        visible: visible ?? true,
+      },
     });
 
     await logActivity('brand.create', `برند "${name}" ایجاد شد`);

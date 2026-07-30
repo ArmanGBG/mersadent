@@ -24,7 +24,10 @@ interface Brand {
   logo: string | null; visible: boolean;
   _count: { products: number };
 }
-const emptyForm = { name: '', slug: '' };
+// `logo` holds the uploaded image URL so it can be set even before the brand is saved (create mode)
+const emptyForm = { name: '', slug: '', logo: '' as string };
+// Track which logo URL was uploaded during the CURRENT dialog session so we can show a preview.
+// `editing` is only set when editing an existing brand; for create we keep the logo in `form.logo`.
 
 export function AdminBrands({ token }: { token: string }) {
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -35,8 +38,41 @@ export function AdminBrands({ token }: { token: string }) {
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Brand | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [uploading, setUploading] = useState<string | null>(null); // brand id being uploaded
+  // Upload a logo file. Works in BOTH create and edit modes:
+  //  - If editing an existing brand, pass brandId so the server persists logo to the DB immediately.
+  //  - If creating a new brand, upload without brandId; the server returns a URL which we keep in
+  //    form state and send along with the POST when the brand is saved.
+  const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      // Only include brandId when editing an existing brand (so it gets persisted server-side).
+      // For new brands we keep the URL locally until the brand is created.
+      if (editing?.id) fd.append('brandId', String(editing.id));
+
+      const res = await fetch('/api/admin/brands/upload', {
+        method: 'POST',
+        body: fd,
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.error) { toast.error(data.error); return; }
+      toast.success('لوگو آپلود شد');
+      // Keep the URL in form state (used by both create and edit save flows)
+      setForm(f => ({ ...f, logo: data.url }));
+      if (editing) {
+        setEditing({ ...editing, logo: data.url });
+      }
+    } catch { toast.error('خطا در آپلود لوگو'); }
+    finally { setUploading(false); e.target.value = ''; }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -53,7 +89,7 @@ export function AdminBrands({ token }: { token: string }) {
   const openCreate = () => { setEditing(null); setForm({ ...emptyForm }); setDialogOpen(true); };
   const openEdit = (b: Brand) => {
     setEditing(b);
-    setForm({ name: b.name, slug: b.slug });
+    setForm({ name: b.name, slug: b.slug, logo: b.logo || '' });
     setDialogOpen(true);
   };
 
@@ -61,11 +97,14 @@ export function AdminBrands({ token }: { token: string }) {
     if (!form.name) { toast.error('نام الزامی است'); return; }
     setSaving(true);
     try {
-      const body: any = { name: form.name, slug: form.slug || toSlug(form.name) };
+      const body: any = {
+        name: form.name,
+        slug: form.slug || toSlug(form.name),
+        logo: form.logo || null,
+      };
       let res;
       if (editing) {
         body.id = editing.id;
-        body.logo = editing.logo;
         body.visible = editing.visible;
         res = await adminFetch(token, '/api/admin/brands', { method: 'PUT', body: JSON.stringify(body) });
       } else {
@@ -107,52 +146,22 @@ export function AdminBrands({ token }: { token: string }) {
     } catch { toast.error('خطا'); }
   };
 
-  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Determine brandId - use editing if dialog is open, or prompt
-    const brandId = editing?.id;
-    if (!brandId) {
-      toast.error('ابتدا برند را ذخیره کنید');
-      return;
-    }
-
-    setUploading(String(brandId));
-    try {
-      const fd = new FormData();
-      fd.append('file', file);
-      fd.append('brandId', String(brandId));
-      const res = await fetch('/api/admin/brands/upload', {
-        method: 'POST',
-        body: fd,
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (data.error) { toast.error(data.error); return; }
-      toast.success('لوگو آپلود شد');
-      // Update editing brand's logo
-      if (editing) {
-        setEditing({ ...editing, logo: data.url });
-      }
-      load();
-    } catch { toast.error('خطا در آپلود لوگو'); }
-    finally { setUploading(null); e.target.value = ''; }
-  };
-
   const removeLogo = async () => {
-    if (!editing) return;
-    try {
-      const res = await adminFetch(token, '/api/admin/brands', {
-        method: 'PUT',
-        body: JSON.stringify({ id: editing.id, name: editing.name, logo: null }),
-      });
-      const data = await res.json();
-      if (data.error) { toast.error(data.error); return; }
-      setEditing({ ...editing, logo: null });
-      toast.success('لوگو حذف شد');
-      load();
-    } catch { toast.error('خطا'); }
+    // For an existing brand, also clear the logo server-side.
+    if (editing?.id) {
+      try {
+        const res = await adminFetch(token, '/api/admin/brands', {
+          method: 'PUT',
+          body: JSON.stringify({ id: editing.id, name: editing.name, logo: null }),
+        });
+        const data = await res.json();
+        if (data.error) { toast.error(data.error); return; }
+        setEditing({ ...editing, logo: null });
+      } catch { toast.error('خطا'); return; }
+    }
+    // Clear the local form state in both create and edit modes
+    setForm(f => ({ ...f, logo: '' }));
+    toast.success('لوگو حذف شد');
   };
 
   const visibleCount = brands.filter(b => b.visible).length;
@@ -252,51 +261,52 @@ export function AdminBrands({ token }: { token: string }) {
             <DialogDescription>اطلاعات برند را وارد کنید</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 mt-4">
-            {/* Logo upload section */}
-            {editing && (
-              <div className="space-y-2">
-                <Label>لوگو برند</Label>
-                <div className="flex items-center gap-3">
-                  <div className="w-16 h-16 rounded-xl bg-gray-100 border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden flex-shrink-0">
-                    {editing.logo ? (
-                      <img src={editing.logo} alt={editing.name} className="w-full h-full object-contain p-1" />
-                    ) : (
-                      <ImageIcon className="w-6 h-6 text-gray-300" />
-                    )}
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={handleLogoUpload}
-                    />
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={uploading === String(editing.id)}
-                      onClick={() => fileInputRef.current?.click()}
-                    >
-                      {uploading === String(editing.id) ? (
-                        <><Loader2 className="w-3.5 h-3.5 ml-1 animate-spin" /> در حال آپلود...</>
-                      ) : (
-                        <><Upload className="w-3.5 h-3.5 ml-1" /> آپلود لوگو</>
-                      )}
-                    </Button>
-                    {editing.logo && (
-                      <button
-                        onClick={removeLogo}
-                        className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1"
-                      >
-                        <X className="w-3 h-3" /> حذف لوگو
-                      </button>
-                    )}
-                  </div>
+            {/* Logo upload section — shown in BOTH create and edit modes */}
+            <div className="space-y-2">
+              <Label>لوگو برند</Label>
+              <div className="flex items-center gap-3">
+                <div className="w-20 h-20 rounded-xl bg-gray-100 border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden flex-shrink-0">
+                  {form.logo ? (
+                    <img src={form.logo} alt={form.name || 'logo'} className="w-full h-full object-contain p-1.5" />
+                  ) : (
+                    <ImageIcon className="w-7 h-7 text-gray-300" />
+                  )}
                 </div>
-                <p className="text-[11px] text-gray-400">فرمت‌های مجاز: PNG, JPG, WebP, SVG — حداکثر ۲ مگابایت</p>
+                <div className="flex flex-col gap-1.5">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleLogoUpload}
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={uploading}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    {uploading ? (
+                      <><Loader2 className="w-3.5 h-3.5 ml-1 animate-spin" /> در حال آپلود...</>
+                    ) : (
+                      <><Upload className="w-3.5 h-3.5 ml-1" /> {form.logo ? 'تغییر لوگو' : 'آپلود لوگو'}</>
+                    )}
+                  </Button>
+                  {form.logo && (
+                    <button
+                      onClick={removeLogo}
+                      className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1"
+                    >
+                      <X className="w-3 h-3" /> حذف لوگو
+                    </button>
+                  )}
+                </div>
               </div>
-            )}
+              <p className="text-[11px] text-gray-400">فرمت‌های مجاز: PNG, JPG, WebP, SVG — حداکثر ۲ مگابایت</p>
+              {!editing && form.logo && (
+                <p className="text-[11px] text-emerald-600">لوگو بارگذاری شد و هنگام ذخیره برند ثبت می‌شود.</p>
+              )}
+            </div>
 
             <div className="space-y-2">
               <Label>نام برند *</Label>

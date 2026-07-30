@@ -80,3 +80,44 @@ Stage Summary:
 - Toolbar now has three expansion controls: "باز کردن همه" (all), "بستن همه" (none), and the new dropdown "باز کردن فقط یک دسته..." (single main category's subtree).
 - Selecting a main category from the dropdown collapses everything else first, then expands only the chosen root's full 3-level sub-tree.
 - Verified working end-to-end in the browser; no console/runtime errors.
+
+---
+Task ID: 3
+Agent: main
+Task: Fix the Brands admin section — the brand edit/create dialog lacked a working image upload feature. Add the ability to attach a logo image to a brand (including when creating a NEW brand, not only when editing).
+
+Work Log:
+- Diagnosed root cause: the `/api/admin/brands/upload` endpoint did NOT exist at all (only `route.ts` was present in the brands API folder). The AdminBrands.tsx component already had upload logic but only gated it behind `{editing && ...}` (i.e. only when editing an existing brand), and called a non-existent endpoint. Additionally the POST create route ignored the `logo` field.
+- Created `src/app/api/admin/brands/upload/route.ts`:
+  - POST handler that verifies the admin token via the `Authorization: Bearer` header.
+  - Reads FormData (`file` + optional `brandId`), validates mime type (PNG/JPG/WebP/SVG/GIF) and size (≤2MB).
+  - Saves to `public/uploads/brands/brand-<id-or-temp>-<timestamp>.<ext>`. Non-SVG images are optimized with sharp (resize to max 400×400 inside, convert to webp @85 quality). SVGs are saved as-is.
+  - When `brandId` is provided (edit mode), persists the logo URL to the DB and deletes the previous logo file if it was one of ours.
+  - Returns `{ url }`.
+- Updated `POST /api/admin/brands` to accept and persist the `logo` field on create (previously only `name/slug/visible` were destructured, so logo was silently dropped).
+- Rewrote `src/components/admin/AdminBrands.tsx`:
+  - Added `logo` to form state (`emptyForm` now `{ name, slug, logo }`).
+  - Removed the `{editing && ...}` gate so the logo upload section appears in BOTH create and edit modes.
+  - `handleLogoUpload` now uploads without requiring a brandId (for create mode the server returns a URL kept locally in `form.logo`; for edit mode the brandId is sent so the server persists immediately). Removed the "ابتدا برند را ذخیره کنید" restriction.
+  - `removeLogo` now clears `form.logo` locally for create mode AND PUTs `logo:null` server-side for edit mode.
+  - `handleSave` now always sends `logo: form.logo || null` in both POST and PUT bodies.
+  - The preview now reads from `form.logo` (single source of truth). Button label switches between "آپلود لوگو" / "تغییر لوگو". Shows a helper note in create mode: "لوگو بارگذاری شد و هنگام ذخیره برند ثبت می‌شود."
+  - `uploading` state simplified from `string | null` to a plain boolean.
+- Cleared stale Turbopack cache (`.next`) and restarted the dev server after edits.
+- Removed an unused `eslint-disable` directive to keep lint clean (the only remaining lint error is pre-existing in the `mersadent-clone` example folder, unrelated).
+
+Verification (browser + API):
+- API-direct: POST `/api/admin/brands/upload` with a test PNG returned `{url:"/uploads/brands/brand-temp-<ts>.webp"}` and created the file (10 files in the uploads dir, up from 9).
+- API-direct: POST `/api/admin/brands` with a logo URL now persists `logo` correctly (was null before the route fix).
+- Browser: logged in as admin/admin → Brands → "برند جدید". VLM confirmed the create dialog now shows a logo upload area ("آپلود لوگو" button + placeholder icon) at the top — previously this was hidden in create mode.
+- Browser: uploaded a generated test logo via the hidden file input → toast "لوگو آپلود شد", button became "تغییر لوگو", "حذف لوگو" appeared, and the preview showed the actual blue tooth logo (VLM-confirmed).
+- Browser: filled name "BroaderDent" + clicked "ایجاد" → toast "ایجاد شد", brand appeared in the table. Scrolled to the row: VLM confirmed the logo column shows the actual colored blue tooth logo (not a gray placeholder).
+- Browser: opened edit dialog on the created brand → VLM confirmed title "ویرایش برند", the existing logo preview is shown, and both "تغییر لوگو" / "حذف لوگو" buttons are present.
+- Cleaned up the two test brands and temp logo files afterwards.
+
+Stage Summary:
+- Brand logo upload now works end-to-end in BOTH create and edit modes (previously it was missing entirely in create mode and the upload endpoint didn't even exist).
+- New endpoint: `POST /api/admin/brands/upload` (FormData: file + optional brandId) → saves optimized webp/svg to `public/uploads/brands/`, optionally persists to DB.
+- `POST /api/admin/brands` now accepts `logo`; `PUT` already accepted it.
+- AdminBrands component uses `form.logo` as single source of truth for the preview; upload works without needing the brand to exist first.
+- Note: the seed-created brands (3M ESPE, AOA, etc.) have `logo: null` in the DB even though seed logo files exist in `public/uploads/brands/` — this is a pre-existing seed-linking issue, not introduced by this change. Admins can now attach logos to any brand via the UI.
