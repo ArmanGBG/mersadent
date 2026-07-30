@@ -510,3 +510,25 @@ Stage Summary:
 - Homepage no longer shows article previews — replaced by a single clickable gradient banner ("مقالات آموزشی را از اینجا بخوانید") that routes to the blog page.
 - Footer now reads contact info + socials from a new uncached public endpoint (`GET /api/settings`); admin changes to phone/email/address/instagram/telegram/whatsapp are reflected immediately on the storefront after save + page reload.
 - New file: `src/app/api/settings/route.ts`. Modified file: `src/app/page.tsx` (`BlogPreviewSection` rewrite, `Footer` rewrite, added `Instagram` import).
+
+---
+Task ID: footer-credit-and-hidden-admin
+Agent: main
+Task: Two patches — (1) change the footer credit text from "طراحی و توسعه با ❤️" to "طراحی و توسعه armangbg"; (2) make the admin panel NOT reachable via a visible footer button (the user felt it was too exposed) and propose an alternative discreet access mechanism.
+
+Work Log:
+- Updated the footer copyright row in `src/app/page.tsx`: replaced the heart credit line with `طراحی و توسعه armangbg`, and removed the visible `<button onClick={() => onNavigate({ type: 'adminLogin' })}>پنل مدیریت</button>` entirely.
+- Added a hidden admin access `useEffect` in the main `MersadentApp` component (placed right after the `navigate` useCallback). It exposes two discreet, invisible-to-normal-visitors ways to reach the admin login:
+  1. URL hash: opening `http://localhost:3000/#admin` (or any URL with `#admin`) immediately routes to the admin login. The hash is auto-cleared via `history.replaceState` afterward so refreshing the page doesn't keep dropping the visitor back into the admin screen.
+  2. Keyboard shortcut: `Ctrl + Shift + A` anywhere on the site triggers the admin login. Other key combinations (including plain `a`) are ignored.
+- Effect also listens for `hashchange` so the hash route works after initial load.
+- Verified end-to-end with Agent Browser:
+  - Footer no longer shows a "پنل مدیریت" button; credit text now reads "طراحی و توسعه armangbg".
+  - `/#admin` → admin login screen appears, hash is cleared.
+  - `Ctrl+Shift+A` keydown event → admin login screen appears.
+  - Plain `a` key → nothing happens (stays on homepage). Shortcut is specific.
+- `bun run lint` clean for my code (only the pre-existing example-file error remains).
+
+Stage Summary:
+- Footer credit: "طراحی و توسعه armangbg".
+- Admin access: no visible button anywhere. Reach it via `/#admin` (bookmarkable) or `Ctrl + Shift + A` (keyboard shortcut). Both methods are invisible to regular visitors and verified working.

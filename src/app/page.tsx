@@ -3720,15 +3720,8 @@ function Footer({ onNavigate }: { onNavigate: (view: PageView) => void }) {
             © ۱۴۰۴ MersaDent. تمامی حقوق محفوظ است.
           </p>
           <p className="text-xs text-gray-500">
-            طراحی و توسعه با ❤️
+            طراحی و توسعه armangbg
           </p>
-          <button
-            onClick={() => onNavigate({ type: 'adminLogin' })}
-            className="text-xs text-gray-600 hover:text-gray-400 transition-colors"
-            title="پنل مدیریت"
-          >
-            پنل مدیریت
-          </button>
         </div>
       </div>
     </footer>
@@ -3910,6 +3903,42 @@ export default function MersadentApp() {
     setCurrentView(view);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
+
+  // Hidden admin access — no visible button in the footer.
+  // Two discreet ways to reach the admin login:
+  //   1) URL hash: open "/#admin" (bookmarkable, shareable with the site owner)
+  //   2) Keyboard shortcut: Ctrl + Shift + A (common admin shortcut)
+  useEffect(() => {
+    const goAdmin = () => navigate({ type: 'adminLogin' });
+
+    // 1) Hash-based access (also handles hash changes after load)
+    const checkHash = () => {
+      if (window.location.hash.replace(/^#/, '').toLowerCase() === 'admin') {
+        goAdmin();
+        // Clear the hash so a refresh doesn't keep dropping the visitor
+        // straight back into the admin login screen.
+        try {
+          history.replaceState(null, '', window.location.pathname + window.location.search);
+        } catch {}
+      }
+    };
+    checkHash();
+    window.addEventListener('hashchange', checkHash);
+
+    // 2) Keyboard shortcut: Ctrl + Shift + A
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && (e.key === 'A' || e.key === 'a')) {
+        e.preventDefault();
+        goAdmin();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+
+    return () => {
+      window.removeEventListener('hashchange', checkHash);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [navigate]);
 
   const handleSearch = useCallback((query: string) => {
     setSearchQuery(query);
