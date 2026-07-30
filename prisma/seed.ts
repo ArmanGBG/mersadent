@@ -819,8 +819,11 @@ async function main() {
   let skippedCount = 0;
   let errorCount = 0;
 
-  // Group products into batches for transaction
-  const BATCH_SIZE = 100;
+  // Group products into batches for transaction.
+  // NOTE: BATCH_SIZE=10 + explicit timeout is needed for remote PostgreSQL (e.g. Liara)
+  // because long-running transactions get dropped with "Transaction not found" errors.
+  // Smaller batches = shorter transactions = no timeout. Tune up if your DB is fast.
+  const BATCH_SIZE = 10;
 
   for (let i = 0; i < rawProducts.length; i += BATCH_SIZE) {
     const batch = rawProducts.slice(i, i + BATCH_SIZE);
@@ -907,6 +910,10 @@ async function main() {
           }
         }
       }
+    }, {
+      // Generous timeout for remote PostgreSQL (default 5s is too short over WAN)
+      maxWait: 15000,
+      timeout: 60000,
     });
   }
 

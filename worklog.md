@@ -601,3 +601,44 @@ Stage Summary:
 - Files changed: src/app/api/admin/settings/route.ts, src/app/api/settings/route.ts, src/components/admin/AdminSettings.tsx, src/app/page.tsx (Footer)
 - When user gets their real e-Namad code from inamad.ir, they just paste it in admin → settings → "نمادهای اعتماد الکترونیکی" card and save; the official badge auto-renders in the footer
 - DB currently has enamad_code = '' (clean state, ready for real code)
+
+---
+Task ID: postgres-migration
+Agent: main
+Task: Migrate database from SQLite to PostgreSQL (Liara cloud)
+
+Work Log:
+- User created PostgreSQL 16.1 database on Liara (host: kilimanjaro.liara.cloud:32695)
+- Enabled public network access on Liara so sandbox can reach the DB
+- Tested TCP connectivity to kilimanjaro.liara.cloud:32695 → port open
+- Updated prisma/schema.prisma: provider "sqlite" → "postgresql"
+- Updated .env: DATABASE_URL now points to postgresql://root:...@kilimanjaro.liara.cloud:32695/postgres
+- Ran bun run db:generate → Prisma Client regenerated for PostgreSQL
+- Ran bun run db:push (44s) → all tables created in Liara PostgreSQL
+- First seed run failed with "Transaction not found" error (Liara drops long transactions)
+- Patched prisma/seed.ts: reduced BATCH_SIZE from 100 to 10, added explicit timeout (maxWait: 15000, timeout: 60000) to $transaction options
+- Had to TRUNCATE all tables CASCADE to clean up partial data from failed seed run
+- Ran seed in background → completed: 59 categories, 54 brands, 396 products
+- Ran seed:blog → 4 blog categories, 12 posts
+- Dev server kept dying: root cause was shell env var DATABASE_URL=file:/home/z/my-project/db/custom.db (old SQLite URL) overriding the .env file
+- Fix: modified package.json scripts to use `env -u DATABASE_URL` prefix (dev, db:push, db:generate, db:migrate, db:reset, seed, seed:categories, seed:blog) — this unsets DATABASE_URL from shell so Next.js/Prisma read from .env
+- Restarted dev server via start-dev.sh (uses nohup setsid bun run dev -- -H 0.0.0.0)
+- Agent Browser verification:
+  * Homepage loads (HTTP 200), title "MersaDent | مرصادنت"
+  * 10 top-level categories with subcategory counts
+  * 54 brands listed
+  * Hero slider (4 slides) working
+  * Footer renders (categories, quick links, contact, blog banner)
+  * Admin panel: login works, dashboard loads, products page shows 396 products with "موجود" status
+  * All API endpoints return 200 (settings, categories, featured, brands, admin/products, admin/categories, admin/brands, admin/countries)
+  * Prisma queries now use PostgreSQL syntax (SELECT "public"."TableName"...)
+  * No errors in dev.log
+
+Stage Summary:
+- Database fully migrated from SQLite to PostgreSQL 16.1 on Liara
+- All seed data loaded: 59 categories, 54 brands, 396 products, 4 blog categories, 12 blog posts
+- Dev server running on port 3000, connected to Liara PostgreSQL
+- Critical fix: package.json scripts now use `env -u DATABASE_URL` to override stale shell env var
+- Files changed: prisma/schema.prisma, .env, prisma/seed.ts (BATCH_SIZE + timeout), package.json (env -u DATABASE_URL on all prisma/dev scripts)
+- Old SQLite DB file at /home/z/my-project/db/custom.db still exists but unused (can be deleted later if desired)
+- Ready for production deployment to Liara (just need to set DATABASE_URL env var in Liara app settings)
