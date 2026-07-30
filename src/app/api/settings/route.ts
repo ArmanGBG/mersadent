@@ -12,6 +12,7 @@ const PUBLIC_KEYS = [
   'instagram',
   'telegram',
   'whatsapp',
+  'enamad_code',
 ] as const;
 
 const DEFAULTS: Record<string, string> = {
@@ -23,6 +24,7 @@ const DEFAULTS: Record<string, string> = {
   instagram: '',
   telegram: '',
   whatsapp: '',
+  enamad_code: '',
 };
 
 // Always fetch fresh from DB so admin changes appear immediately on the storefront.

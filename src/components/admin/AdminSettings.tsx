@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
-import { Save, Loader2, Globe, Phone, Mail, MapPin, Instagram, MessageCircle, ImagePlus, X } from 'lucide-react';
+import { Save, Loader2, Globe, Phone, Mail, MapPin, Instagram, MessageCircle, ImagePlus, X, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { adminFetch } from '@/lib/admin-utils';
 import { cn } from '@/lib/utils';
@@ -144,6 +144,35 @@ export function AdminSettings({ token }: { token: string }) {
               <Label>واتساپ</Label>
               <Input value={settings.whatsapp || ''} onChange={e => update('whatsapp', e.target.value)} placeholder="https://wa.me/..." dir="ltr" />
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Trust Badges — e-Namad */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <ShieldCheck className="w-5 h-5 text-[#2FC4C9]" />
+            نمادهای اعتماد الکترونیکی
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>کد ای‌نماد (e-Namad)</Label>
+            <Input
+              value={settings.enamad_code || ''}
+              onChange={e => update('enamad_code', e.target.value.trim())}
+              placeholder="مثلاً ۱۲۳۴۵۶"
+              dir="ltr"
+              inputMode="numeric"
+            />
+            <p className="text-[11px] text-muted-foreground leading-5">
+              کد ۶ رقمی ای‌نماد را از پنل کاربری{' '}
+              <a href="https://inamad.ir" target="_blank" rel="noopener noreferrer" className="text-[#2FC4C9] underline underline-offset-2">
+                inamad.ir
+              </a>{' '}
+              دریافت کنید. پس از ثبت‌نام، درخواست تأیید اعتبار می‌دهید و پس از تأیید، این کد به شما اختصاص داده می‌شود. با پر کردن این فیلد، باج رسمی ای‌نماد به‌صورت خودکار در فوتر سایت نمایش داده می‌شود؛ خالی بگذارید تا چیزی نمایش داده نشود.
+            </p>
           </div>
         </CardContent>
       </Card>

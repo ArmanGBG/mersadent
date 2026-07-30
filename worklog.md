@@ -577,3 +577,27 @@ Work Log:
 Stage Summary:
 - Homepage articles banner: replaced the muddy dark gradient with a clean white card + teal accent border + solid teal icon + dark navy title text. Much more readable.
 - Compare view: section headers (اطلاعات پایه, جزئیات محصول, نقاط قوت, نقاط ضعف, مشخصات فنی) now use dark text on a light teal-tinted band instead of white-on-dark. Row labels in the sticky right column also darkened for better contrast.
+
+---
+Task ID: enamad-feature
+Agent: main
+Task: Add e-Namad (ای‌نماد) trust badge support — admin settings field + auto-render in footer
+
+Work Log:
+- Explored current settings architecture: AdminSettings.tsx (form), /api/admin/settings (GET/PUT), /api/settings (public GET), Footer component in page.tsx
+- Added `enamad_code: ''` to DEFAULT_SETTINGS in /api/admin/settings/route.ts
+- Added `enamad_code` to PUBLIC_KEYS whitelist + DEFAULTS in /api/settings/route.ts (so footer can read it)
+- Added new "نمادهای اعتماد الکترونیکی" card in AdminSettings.tsx with ShieldCheck icon, input field (dir=ltr, inputMode=numeric, placeholder "مثلاً ۱۲۳۴۵۶"), and helper text linking to inamad.ir
+- Added enamad badge rendering in Footer component — shows an official enamad logo image (from trustseal.enamad.ir/logo.aspx?id=CODE) wrapped in a link to trustseal.enamad.ir/?id=CODE, only when enamad_code is set (sanitized to digits only). Placed in a new band above the copyright bar with white bg behind the badge.
+- Ran lint: only pre-existing error in mersadent-clone/examples/websocket/frontend.tsx (not related to this task)
+- Browser-verified end-to-end:
+  * Admin settings page shows the new card with input field + inamad.ir helper link ✓
+  * Saved test code "123456" → storefront footer shows enamad badge (link + img with correct URLs) ✓
+  * Cleared code via admin API → storefront footer hides badge ✓
+  * Dev log clean, no errors
+
+Stage Summary:
+- e-Namad feature fully implemented and browser-verified
+- Files changed: src/app/api/admin/settings/route.ts, src/app/api/settings/route.ts, src/components/admin/AdminSettings.tsx, src/app/page.tsx (Footer)
+- When user gets their real e-Namad code from inamad.ir, they just paste it in admin → settings → "نمادهای اعتماد الکترونیکی" card and save; the official badge auto-renders in the footer
+- DB currently has enamad_code = '' (clean state, ready for real code)

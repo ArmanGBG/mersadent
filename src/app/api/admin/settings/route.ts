@@ -11,6 +11,7 @@ const DEFAULT_SETTINGS: Record<string, string> = {
   instagram: '',
   telegram: '',
   whatsapp: '',
+  enamad_code: '',
   hero_slide_1_title: 'یونیت دندانپزشکی',
   hero_slide_1_subtitle: 'بهترین برندهای یونیت با گارانتی اصالت و قیمت مناسب',
   hero_slide_1_image: '/hero-slide-1.png',

@@ -3562,6 +3562,7 @@ function Footer({ onNavigate }: { onNavigate: (view: PageView) => void }) {
   const telegram = settings.telegram?.trim() || '';
   const whatsapp = settings.whatsapp?.trim() || '';
   const hasSocial = instagram || telegram || whatsapp;
+  const enamadCode = (settings.enamad_code || '').trim().replace(/[^\d]/g, '');
 
   return (
     <footer className="bg-mersadent-dark text-white mt-auto">
@@ -3698,6 +3699,30 @@ function Footer({ onNavigate }: { onNavigate: (view: PageView) => void }) {
           </div>
         </div>
       </div>
+
+      {/* Trust badges — e-Namad (auto-shown when enamad_code is set) */}
+      {enamadCode && (
+        <div className="border-t border-white/10 bg-white/5">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-center sm:justify-start">
+            <a
+              href={`https://trustseal.enamad.ir/?id=${enamadCode}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              referrerPolicy="origin"
+              className="inline-block bg-white rounded-md p-1.5 shadow-sm hover:shadow-md transition-shadow"
+              aria-label="نماد اعتماد الکترونیکی (ای‌نماد)"
+              title="نماد اعتماد الکترونیکی"
+            >
+              <img
+                referrerPolicy="origin"
+                src={`https://trustseal.enamad.ir/logo.aspx?id=${enamadCode}`}
+                alt="نماد اعتماد الکترونیکی"
+                className="h-20 w-auto block"
+              />
+            </a>
+          </div>
+        </div>
+      )}
 
       {/* Copyright */}
       <div className="border-t border-white/10">
