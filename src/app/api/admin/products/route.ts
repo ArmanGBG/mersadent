@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { name, slug, model, price, priceType, availability, specs, categoryId, brandId, featured, order, discountPercent, description, strengths, weaknesses, metaTitle, metaDescription, keywords, sku, country, warranty, weight, lowStock, tagIds } = body;
+    const { name, slug, model, price, priceType, availability, specs, categoryId, brandId, featured, visible, order, discountPercent, description, strengths, weaknesses, metaTitle, metaDescription, keywords, sku, country, warranty, weight, lowStock, tagIds } = body;
 
     if (!name || !categoryId || !brandId) {
       return NextResponse.json({ error: 'نام، دسته‌بندی و برند الزامی هستند' }, { status: 400 });
@@ -109,6 +109,7 @@ export async function POST(request: NextRequest) {
         categoryId: parseInt(categoryId),
         brandId: parseInt(brandId),
         featured: !!featured,
+        visible: visible !== undefined ? !!visible : true,
         order: order || 0,
         discountPercent: discountPercent !== undefined && discountPercent !== '' ? parseFloat(discountPercent) : 0,
         description: description || null,
@@ -139,7 +140,7 @@ export async function PUT(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { id, name, slug, model, price, priceType, availability, specs, featured, categoryId, brandId, order, discountPercent, description, strengths, weaknesses, metaTitle, metaDescription, keywords, sku, country, warranty, weight, lowStock, tagIds } = body;
+    const { id, name, slug, model, price, priceType, availability, specs, featured, visible, categoryId, brandId, order, discountPercent, description, strengths, weaknesses, metaTitle, metaDescription, keywords, sku, country, warranty, weight, lowStock, tagIds } = body;
 
     if (!id || !name) {
       return NextResponse.json({ error: 'نام محصول الزامی است' }, { status: 400 });
@@ -159,6 +160,7 @@ export async function PUT(request: NextRequest) {
       availability: availability || 'in_stock',
       specs: specs ?? null,
       featured: !!featured,
+      visible: visible !== undefined ? !!visible : undefined,
       order: order ?? undefined,
       discountPercent: discountPercent !== undefined && discountPercent !== '' ? parseFloat(discountPercent) : 0,
       description: description !== undefined ? (description || null) : undefined,

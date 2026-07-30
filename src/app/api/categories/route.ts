@@ -4,20 +4,23 @@ import { db } from '@/lib/db';
 export async function GET() {
   try {
     const categories = await db.category.findMany({
+      where: { visible: true },
       include: {
         children: {
+          where: { visible: true },
           include: {
             children: {
+              where: { visible: true },
               include: {
-                _count: { select: { products: true } },
+                _count: { select: { products: { where: { visible: true } } } },
               },
               orderBy: { order: 'asc' },
             },
-            _count: { select: { products: true } },
+            _count: { select: { products: { where: { visible: true } } } },
           },
           orderBy: { order: 'asc' },
         },
-        _count: { select: { products: true } },
+        _count: { select: { products: { where: { visible: true } } } },
       },
       orderBy: { order: 'asc' },
     });

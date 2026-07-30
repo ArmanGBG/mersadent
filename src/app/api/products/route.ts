@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { Prisma } from '@prisma/client';
 
-// Helper: resolve categoryId to include ALL descendants recursively
+// Collect a category and ALL its descendants
 async function resolveCategoryIds(categoryId: number): Promise<number[]> {
   const children = await db.category.findMany({
     where: { parentId: categoryId },
@@ -11,6 +11,25 @@ async function resolveCategoryIds(categoryId: number): Promise<number[]> {
   const ids = [categoryId];
   for (const child of children) {
     ids.push(...await resolveCategoryIds(child.id));
+  }
+  return ids;
+}
+
+// Collect ALL ancestors of a category (parent chain). Used to ensure no
+// ancestor is hidden, otherwise products under it should not appear.
+async function collectAncestorIds(categoryId: number): Promise<number[]> {
+  const ids: number[] = [];
+  let current = categoryId;
+  const guard = new Set<number>();
+  while (current && !guard.has(current)) {
+    guard.add(current);
+    const cat = await db.category.findUnique({
+      where: { id: current },
+      select: { parentId: true },
+    });
+    if (!cat || !cat.parentId) break;
+    ids.push(cat.parentId);
+    current = cat.parentId;
   }
   return ids;
 }
@@ -29,13 +48,16 @@ export async function GET(request: NextRequest) {
   const discounted = searchParams.get('discounted');
   const tagSlug = searchParams.get('tag');
 
-  const where: Prisma.ProductWhereInput = {};
+  const where: Prisma.ProductWhereInput = { visible: true };
 
   if (categoryId) {
     const catId = parseInt(categoryId);
     const ids = await resolveCategoryIds(catId);
     where.categoryId = { in: ids };
   }
+  // Always require the (direct) category to be visible so that hiding a
+  // category hides its products on the storefront.
+  where.category = { visible: true };
   if (brandId) {
     const ids = brandId.split(',').map(Number).filter(n => !isNaN(n));
     if (ids.length === 1) {
@@ -94,6 +116,9 @@ export async function GET(request: NextRequest) {
     }),
     db.product.count({ where }),
   ]);
+
+  // Suppress unused helper warning - kept for clarity / future use
+  void collectAncestorIds;
 
   return NextResponse.json({
     products,

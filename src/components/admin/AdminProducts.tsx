@@ -28,7 +28,7 @@ import { parseSuperPrompt } from '@/lib/parse-super-prompt';
 interface AdminProduct {
   id: number; name: string; slug: string; model: string | null;
   price: number | null; priceType: string; availability: string;
-  specs: string | null; featured: boolean; order: number; discountPercent: number;
+  specs: string | null; featured: boolean; visible: boolean; order: number; discountPercent: number;
   description: string | null;
   strengths: string | null;
   weaknesses: string | null;
@@ -54,7 +54,7 @@ interface SimpleTag { id: number; name: string; slug: string; type: string; }
 interface ProductForm {
   name: string; slug: string; model: string; price: string; priceType: string;
   availability: string; specs: string; categoryId: string; brandId: string;
-  featured: boolean; discountPercent: string;
+  featured: boolean; visible: boolean; discountPercent: string;
   description: string; strengths: string[]; weaknesses: string[];
   metaTitle: string; metaDescription: string; keywords: string;
   sku: string; country: string; warranty: string; weight: string; lowStock: string;
@@ -63,7 +63,7 @@ interface ProductForm {
 
 const emptyProduct: ProductForm = {
   name: '', slug: '', model: '', price: '', priceType: 'fixed', availability: 'in_stock',
-  specs: '', categoryId: '', brandId: '', featured: false, discountPercent: '0',
+  specs: '', categoryId: '', brandId: '', featured: false, visible: true, discountPercent: '0',
   description: '', strengths: [], weaknesses: [], metaTitle: '', metaDescription: '', keywords: '',
   sku: '', country: '', warranty: '', weight: '', lowStock: '0', tagIds: [],
 };
@@ -159,6 +159,7 @@ export function AdminProducts({ token }: { token: string }) {
       categoryId: String(p.category.id),
       brandId: String(p.brand.id),
       featured: p.featured,
+      visible: p.visible !== false,
       discountPercent: String(p.discountPercent ?? 0),
       description: p.description || '',
       strengths: p.strengths ? (() => { try { return JSON.parse(p.strengths); } catch { return []; } })() : [],
@@ -196,6 +197,7 @@ export function AdminProducts({ token }: { token: string }) {
         categoryId: Number(form.categoryId),
         brandId: Number(form.brandId),
         featured: form.featured,
+        visible: form.visible,
         description: form.description || null,
         strengths: form.strengths.length > 0 ? JSON.stringify(form.strengths) : null,
         weaknesses: form.weaknesses.length > 0 ? JSON.stringify(form.weaknesses) : null,
@@ -338,6 +340,28 @@ export function AdminProducts({ token }: { token: string }) {
     } catch { toast.error('خطا'); }
   };
 
+  const toggleVisible = async (p: AdminProduct) => {
+    const newVal = !(p.visible !== false);
+    // Optimistic
+    setProducts(prev => prev.map(x => x.id === p.id ? { ...x, visible: newVal } : x));
+    try {
+      const res = await adminFetch(token, '/api/admin/products', {
+        method: 'PUT',
+        body: JSON.stringify({ id: p.id, name: p.name, visible: newVal }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        toast.error(data.error);
+        loadProducts();
+        return;
+      }
+      toast.success(newVal ? 'نمایش داده شد' : 'از نمایش خارج شد');
+    } catch {
+      toast.error('خطا');
+      loadProducts();
+    }
+  };
+
   const availabilityLabel = (a: string) => {
     if (a === 'in_stock') return <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">موجود</Badge>;
     if (a === 'out_of_stock') return <Badge className="bg-red-100 text-red-700 hover:bg-red-100">ناموجود</Badge>;
@@ -384,17 +408,20 @@ export function AdminProducts({ token }: { token: string }) {
                     <th className="text-right py-3 px-3 font-medium">وضعیت</th>
                     <th className="text-center py-3 px-3 font-medium">تصاویر</th>
                     <th className="text-center py-3 px-3 font-medium">ویژه</th>
+                    <th className="text-center py-3 px-3 font-medium">نمایش</th>
                     <th className="text-center py-3 px-3 font-medium">عملیات</th>
                   </tr>
                 </thead>
                 <tbody>
                   {products.length === 0 && (
-                    <tr><td colSpan={9} className="text-center py-12 text-muted-foreground">محصولی یافت نشد</td></tr>
+                    <tr><td colSpan={10} className="text-center py-12 text-muted-foreground">محصولی یافت نشد</td></tr>
                   )}
-                  {products.map(p => (
-                    <tr key={p.id} className="border-b last:border-0 hover:bg-gray-50/50">
+                  {products.map(p => {
+                    const isVisible = p.visible !== false;
+                    return (
+                    <tr key={p.id} className={`border-b last:border-0 hover:bg-gray-50/50 ${!isVisible ? 'bg-gray-50/60' : ''}`}>
                       <td className="py-2.5 px-3 text-muted-foreground">#{p.id}</td>
-                      <td className="py-2.5 px-3 font-medium max-w-[200px] truncate">{p.name}</td>
+                      <td className={`py-2.5 px-3 font-medium max-w-[200px] truncate ${!isVisible ? 'text-gray-400' : ''}`}>{p.name}{!isVisible && <span className="block text-[10px] text-gray-400">پنهان</span>}</td>
                       <td className="py-2.5 px-3 hidden md:table-cell text-gray-600">{p.brand.name}</td>
                       <td className="py-2.5 px-3 hidden lg:table-cell text-gray-600">{p.category.name}</td>
                       <td className="py-2.5 px-3">
@@ -410,6 +437,9 @@ export function AdminProducts({ token }: { token: string }) {
                         <Switch checked={p.featured} onCheckedChange={() => toggleFeatured(p)} className="mx-auto" />
                       </td>
                       <td className="py-2.5 px-3 text-center">
+                        <Switch checked={isVisible} onCheckedChange={() => toggleVisible(p)} className="mx-auto" />
+                      </td>
+                      <td className="py-2.5 px-3 text-center">
                         <div className="flex items-center justify-center gap-1">
                           <button onClick={() => openEdit(p)} className="p-1.5 rounded-md hover:bg-blue-50 text-blue-600 transition-colors">
                             <Pencil className="w-4 h-4" />
@@ -420,7 +450,8 @@ export function AdminProducts({ token }: { token: string }) {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -536,6 +567,10 @@ export function AdminProducts({ token }: { token: string }) {
             <div className="flex items-center gap-2 pt-6">
               <Switch checked={form.featured} onCheckedChange={v => setForm(f => ({ ...f, featured: v }))} />
               <Label>محصول ویژه</Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch checked={form.visible} onCheckedChange={v => setForm(f => ({ ...f, visible: v }))} />
+              <Label>نمایش در سایت</Label>
             </div>
             <div className="space-y-2">
               <Label>کد محصول (SKU)</Label>

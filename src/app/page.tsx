@@ -531,7 +531,7 @@ function Header({
                     exit={{ opacity: 0, y: 8 }}
                     transition={{ duration: 0.15 }}
                     className="absolute top-full mt-2 right-0 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden z-50"
-                    style={{ minWidth: activeCat?.children?.length ? '520px' : '220px' }}
+                    style={{ minWidth: activeCat?.children?.length ? '720px' : '220px', maxWidth: 'min(90vw, 860px)' }}
                     onMouseEnter={() => { if (catTimeoutRef.current) clearTimeout(catTimeoutRef.current); }}
                     onMouseLeave={handleCatLeave}
                   >
@@ -562,46 +562,58 @@ function Header({
                         </div>
                       </div>
 
-                      {/* Subcategories panel */}
+                      {/* Subcategories panel - each sub-category is a row with grandchildren laid out horizontally */}
                       {activeCat?.children?.length ? (
-                        <div className="flex-1 p-4 min-w-[260px]">
-                          <button
-                            onClick={() => { onNavigate({ type: 'category', categoryId: activeCat.id, slug: activeCat.slug }); setCatMenuOpen(false); }}
-                            className="flex items-center gap-2 mb-3 text-sm font-bold text-mersadent-dark hover:text-mersadent-accent transition-colors"
-                          >
-                            {activeCat.name}
-                            <span className="text-xs font-normal text-gray-400">
-                              ({(activeCat.productCount || 0) + (activeCat.children?.reduce((sum, c) => sum + (c.productCount || 0), 0) || 0)} محصول)
-                            </span>
-                          </button>
-                          <div className="grid grid-cols-1 gap-1">
+                        <div className="flex-1 min-w-[460px] flex flex-col">
+                          <div className="px-5 pt-4 pb-2 border-b border-gray-100 flex items-center justify-between">
+                            <button
+                              onClick={() => { onNavigate({ type: 'category', categoryId: activeCat.id, slug: activeCat.slug }); setCatMenuOpen(false); }}
+                              className="flex items-center gap-2 text-sm font-bold text-mersadent-dark hover:text-mersadent-accent transition-colors"
+                            >
+                              {activeCat.name}
+                              <span className="text-xs font-normal text-gray-400">
+                                ({(activeCat.productCount || 0) + (activeCat.children?.reduce((sum, c) => sum + (c.productCount || 0), 0) || 0)} محصول)
+                              </span>
+                            </button>
+                            <button
+                              onClick={() => { onNavigate({ type: 'category', categoryId: activeCat.id, slug: activeCat.slug }); setCatMenuOpen(false); }}
+                              className="text-[11px] text-mersadent-accent hover:underline"
+                            >
+                              مشاهده همه ←
+                            </button>
+                          </div>
+                          <div className="overflow-y-auto max-h-[70vh] py-2">
                             {activeCat.children.map((child) => (
-                              <div key={child.id}>
-                                <button
-                                  onClick={() => { onNavigate({ type: 'category', categoryId: child.id, slug: child.slug, parentName: activeCat.name, parentSlug: activeCat.slug }); setCatMenuOpen(false); }}
-                                  className="flex items-center justify-between px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-mersadent-accent/5 hover:text-mersadent-accent transition-colors group w-full"
-                                >
-                                  <span>{child.name}</span>
-                                  <span className="text-xs text-gray-400 group-hover:text-mersadent-accent/60">
-                                    {child.productCount || 0}
-                                  </span>
-                                </button>
-                                {child.children && child.children.length > 0 && (
-                                  <div className="mr-4 mt-1 flex flex-col gap-0.5">
-                                    {child.children.map((grandchild) => (
-                                      <button
-                                        key={grandchild.id}
-                                        onClick={() => { onNavigate({ type: 'category', categoryId: grandchild.id, slug: grandchild.slug, parentName: child.name, parentSlug: child.slug }); setCatMenuOpen(false); }}
-                                        className="flex items-center justify-between px-3 py-1.5 rounded-lg text-xs text-gray-500 hover:bg-mersadent-accent/5 hover:text-mersadent-accent transition-colors group w-full"
-                                      >
-                                        <span>{grandchild.name}</span>
-                                        <span className="text-[10px] text-gray-400 group-hover:text-mersadent-accent/60">
-                                          {grandchild.productCount || 0}
-                                        </span>
-                                      </button>
-                                    ))}
-                                  </div>
-                                )}
+                              <div key={child.id} className="px-5 py-2.5 border-b border-gray-50 last:border-0">
+                                <div className="flex items-start gap-3 flex-wrap">
+                                  {/* Sub-category title (the "row" label) */}
+                                  <button
+                                    onClick={() => { onNavigate({ type: 'category', categoryId: child.id, slug: child.slug, parentName: activeCat.name, parentSlug: activeCat.slug }); setCatMenuOpen(false); }}
+                                    className="flex-shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-sm font-semibold text-mersadent-dark hover:bg-mersadent-accent/10 hover:text-mersadent-accent transition-colors"
+                                  >
+                                    <span>{child.name}</span>
+                                    {child.productCount ? (
+                                      <span className="text-[10px] font-normal text-gray-400">({child.productCount})</span>
+                                    ) : null}
+                                  </button>
+                                  {/* Grandchildren laid out horizontally next to the sub-category title */}
+                                  {child.children && child.children.length > 0 && (
+                                    <div className="flex flex-wrap items-center gap-x-1 gap-y-1.5 flex-1 min-w-0">
+                                      {child.children.map((grandchild) => (
+                                        <button
+                                          key={grandchild.id}
+                                          onClick={() => { onNavigate({ type: 'category', categoryId: grandchild.id, slug: grandchild.slug, parentName: child.name, parentSlug: child.slug }); setCatMenuOpen(false); }}
+                                          className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs text-gray-500 hover:bg-mersadent-accent/5 hover:text-mersadent-accent transition-colors whitespace-nowrap"
+                                        >
+                                          <span>{grandchild.name}</span>
+                                          {grandchild.productCount ? (
+                                            <span className="text-[9px] text-gray-300">({grandchild.productCount})</span>
+                                          ) : null}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                             ))}
                           </div>
