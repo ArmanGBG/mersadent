@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { verifyAdminToken, unauthorizedResponse, logActivity } from '@/lib/admin-auth';
+import { deleteUpload, isOurUpload } from '@/lib/storage';
 
 function toSlug(text: string): string {
   return text.trim().replace(/\s+/g, '-').replace(/[^a-zA-Z0-9\u0600-\u06FF-]/g, '').toLowerCase();
@@ -42,6 +43,18 @@ export async function PUT(
 
     if (!title) return NextResponse.json({ error: 'عنوان الزامی است' }, { status: 400 });
 
+    // If coverImage is being changed (including cleared to null), delete the
+    // previous cover image file from disk to avoid orphan files.
+    if (coverImage !== undefined) {
+      const existing = await db.blogPost.findUnique({
+        where: { id: parseInt(id) },
+        select: { coverImage: true },
+      });
+      if (existing && existing.coverImage !== coverImage && isOurUpload(existing.coverImage)) {
+        await deleteUpload(existing.coverImage);
+      }
+    }
+
     const post = await db.blogPost.update({
       where: { id: parseInt(id) },
       data: {
@@ -76,6 +89,11 @@ export async function DELETE(
     const { id } = await params;
     const post = await db.blogPost.findUnique({ where: { id: parseInt(id) } });
     if (!post) return NextResponse.json({ error: 'مقاله یافت نشد' }, { status: 404 });
+
+    // Delete the cover image file from disk (only if it's one of our uploads)
+    if (isOurUpload(post.coverImage)) {
+      await deleteUpload(post.coverImage);
+    }
 
     await db.blogPost.delete({ where: { id: parseInt(id) } });
     await logActivity('blog.delete', `مقاله "${post.title}" حذف شد`);

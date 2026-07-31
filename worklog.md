@@ -709,3 +709,59 @@ Stage Summary:
   * src/app/api/admin/settings/route.ts (added cleanup on hero_slide_*_image change)
   * src/components/admin/AdminProducts.tsx (fixed frontend to call correct endpoint)
   * .gitignore (added /public/uploads/)
+
+---
+Task ID: deploy-prep-1
+Agent: main
+Task: Prepare all files for Liara deployment — finalize Image Upload Overhaul, add Liara deployment config, .env.example, DEPLOY.md, and verify everything works on PostgreSQL.
+
+Work Log:
+- Fixed blog DELETE route (`src/app/api/admin/blog/[id]/route.ts`) to clean up cover image file from disk via `deleteUpload()` when a blog post is deleted.
+- Fixed blog PUT route to delete previous cover image file when coverImage is replaced or cleared (prevents orphan files).
+- Updated `package.json`:
+  - Changed `build` script to plain `next build` (removed standalone cp commands).
+  - Changed `start` script to `next start -p ${PORT:-3000}` (uses standard Next.js server, respects Liara's PORT env var).
+  - Added `postinstall: prisma generate` so Prisma Client is auto-generated on Liara after `npm install`.
+  - Removed `better-sqlite3` dependency (native module, no longer needed after PostgreSQL migration — was only used by an unused seed script).
+- Updated `next.config.ts`: removed `output: "standalone"` so that `next start` serves `public/` at runtime (required for Liara Persistent Disk mounted at `/app/public/uploads` to serve freshly uploaded images without a rebuild).
+- Created `liara.json` with:
+  - Platform: Node.js 22
+  - Build: `bun run build`
+  - Start: `bun run start` on port 3000
+  - Persistent Disk: `uploads` mounted to `/app/public/uploads`, size 1024 MB
+- Created `.env.example` documenting all required env vars: `DATABASE_URL`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `JWT_SECRET`, plus optional `SMSIR_*` vars for future SMS integration.
+- Updated local `.env` to include `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `JWT_SECRET` (with default values matching code fallbacks) alongside the existing `DATABASE_URL`.
+- Created `DEPLOY.md` — comprehensive Persian (RTL) step-by-step Liara deployment guide covering:
+  - PostgreSQL database setup on Liara
+  - Environment variables configuration
+  - Persistent Disk setup (critical for image persistence across deploys)
+  - Deployment via Git or Liara CLI
+  - Verification checklist
+  - Update workflow (confirming data + images survive redeploys)
+  - Troubleshooting guide
+- Updated `eslint.config.mjs` to ignore `mersadent-clone/**`, `mini-services/**`, `tool-results/**` directories (old reference clone was causing lint failures).
+- Ran `bun run lint` — passes cleanly with zero errors.
+- Ran `bun run db:push` — schema already in sync with Liara PostgreSQL.
+- Ran `bun run db:generate` — Prisma Client regenerated successfully.
+- Restarted dev server via `start-dev.sh` — running cleanly on port 3000.
+- Browser-verified: homepage loads (title "MersaDent | مرصادنت"), footer renders, no runtime errors.
+- API-verified: `/api/settings`, `/api/categories`, `/api/brands`, `/api/admin/auth` all return correct data from PostgreSQL.
+- End-to-end upload test (brand logo):
+  - Upload creates UUID-named webp file (e.g., `c00befbd-82c5-4647-83e0-ef25b6c3699a.webp`) ✅
+  - File saved to `public/uploads/brands/` with `recursive: true` mkdir ✅
+  - DB stores only relative path (`/uploads/brands/uuid.webp`) ✅
+  - Re-uploading deletes old file from disk (no orphans) ✅
+  - Clearing logo via PUT deletes file from disk ✅
+  - UUID naming format verified against regex ✅
+
+Stage Summary:
+- Image Upload Overhaul is fully complete and verified: all 4 upload routes (hero, products, brands, categories) use UUID naming, recursive mkdir, relative DB paths, and auto-cleanup on delete/replace.
+- Blog delete/put now also cleans up cover image files.
+- Project is fully ready for Liara deployment:
+  - `liara.json` configures platform, build, start, and persistent disk
+  - `package.json` scripts work for both local dev and Liara production
+  - `.env.example` documents all required env vars
+  - `DEPLOY.md` provides complete step-by-step Persian deployment guide
+- Key architectural decision: using `next start` (not standalone) so that Liara's Persistent Disk mounted at `/app/public/uploads` serves freshly uploaded images at runtime without requiring a rebuild.
+- The `better-sqlite3` native module was removed to prevent potential build failures on Liara.
+- Lint passes cleanly, dev server runs on port 3000, all APIs return correct PostgreSQL data, image upload/cleanup cycle verified end-to-end.

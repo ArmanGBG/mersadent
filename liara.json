@@ -1,0 +1,22 @@
+{
+  "$schema": "https://schema.liara.ir/liara.json",
+  "platform": "node",
+  "node": {
+    "version": "22"
+  },
+  "build": {
+    "command": "bun run build",
+    "path": "."
+  },
+  "start": {
+    "command": "bun run start",
+    "port": 3000
+  },
+  "disks": [
+    {
+      "name": "uploads",
+      "mountTo": "/app/public/uploads",
+      "size": 1024
+    }
+  ]
+}
