@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { verifyAdminToken, unauthorizedResponse, logActivity } from '@/lib/admin-auth';
+import { deleteUpload, isOurUpload } from '@/lib/storage';
 
 function toSlug(text: string): string {
   return text.trim().replace(/\s+/g, '-').replace(/[^a-zA-Z0-9\u0600-\u06FF-]/g, '').toLowerCase();
@@ -61,8 +62,19 @@ export async function PUT(request: NextRequest) {
     const { id, name, slug, logo, visible } = await request.json();
     if (!id || !name) return NextResponse.json({ error: 'شناسه و نام الزامی هستند' }, { status: 400 });
 
+    const brandId = parseInt(id);
+    const existing = await db.brand.findUnique({ where: { id: brandId } });
+
+    // If the logo is being changed (including cleared to null), delete the
+    // previous logo file from disk to avoid orphan files.
+    if (existing && logo !== undefined && existing.logo !== logo) {
+      if (isOurUpload(existing.logo)) {
+        await deleteUpload(existing.logo);
+      }
+    }
+
     const brand = await db.brand.update({
-      where: { id: parseInt(id) },
+      where: { id: brandId },
       data: {
         name,
         slug: slug || undefined,
@@ -95,6 +107,11 @@ export async function DELETE(request: NextRequest) {
 
     if (!brand) return NextResponse.json({ error: 'برند یافت نشد' }, { status: 404 });
     if (brand._count.products > 0) return NextResponse.json({ error: 'این برند دارای محصول است و قابل حذف نیست' }, { status: 400 });
+
+    // Delete the brand's logo file from disk (only if it's one of our uploads)
+    if (isOurUpload(brand.logo)) {
+      await deleteUpload(brand.logo);
+    }
 
     await db.brand.delete({ where: { id: parseInt(id) } });
     await logActivity('brand.delete', `برند "${brand.name}" حذف شد`);

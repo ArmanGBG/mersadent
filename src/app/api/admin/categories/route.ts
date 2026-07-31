@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { verifyAdminToken, unauthorizedResponse, logActivity } from '@/lib/admin-auth';
+import { deleteUpload, isOurUpload } from '@/lib/storage';
 
 function toSlug(text: string): string {
   return text.trim().replace(/\s+/g, '-').replace(/[^a-zA-Z0-9\u0600-\u06FF-]/g, '').toLowerCase();
@@ -173,8 +174,16 @@ export async function PUT(request: NextRequest) {
     if (parentId !== undefined) {
       updateData.parentId = parentId ? parseInt(parentId) : null;
     }
-    // image can be a URL string or null (to clear)
-    if (image !== undefined) updateData.image = image || null;
+
+    // If the image is being changed (including cleared to null), delete the
+    // previous image file from disk to avoid orphan files.
+    if (image !== undefined) {
+      const existing = await db.category.findUnique({ where: { id: categoryId }, select: { image: true } });
+      if (existing && existing.image !== image && isOurUpload(existing.image)) {
+        await deleteUpload(existing.image);
+      }
+      updateData.image = image || null;
+    }
 
     // Handle visibility cascade
     if (visible !== undefined) {
@@ -224,6 +233,11 @@ export async function DELETE(request: NextRequest) {
     if (!category) return NextResponse.json({ error: 'دسته‌بندی یافت نشد' }, { status: 404 });
     if (category._count.products > 0) return NextResponse.json({ error: 'این دسته‌بندی دارای محصول است و قابل حذف نیست' }, { status: 400 });
     if (category._count.children > 0) return NextResponse.json({ error: 'این دسته‌بندی دارای زیردسته است و قابل حذف نیست' }, { status: 400 });
+
+    // Delete the category's image file from disk (only if it's one of our uploads)
+    if (isOurUpload(category.image)) {
+      await deleteUpload(category.image);
+    }
 
     await db.category.delete({ where: { id: parseInt(id) } });
     await logActivity('category.delete', `دسته‌بندی "${category.name}" حذف شد`);

@@ -374,8 +374,13 @@ export function AdminProducts({ token }: { token: string }) {
     try {
       const fd = new FormData();
       fd.append('file', file);
-      fd.append('productId', String(imageProduct.id));
-      const res = await fetch('/api/admin/upload', { method: 'POST', body: fd });
+      // Use the dedicated per-product images endpoint (POST /api/admin/products/[id]/images)
+      // instead of the previous non-existent /api/admin/upload route.
+      const res = await fetch(`/api/admin/products/${imageProduct.id}/images`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      });
       const data = await res.json();
       if (data.error) { toast.error(data.error); return; }
       toast.success('تصویر آپلود شد');

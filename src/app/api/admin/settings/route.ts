@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { verifyAdminToken, unauthorizedResponse, logActivity } from '@/lib/admin-auth';
+import { deleteUpload, isOurUpload } from '@/lib/storage';
 
 const DEFAULT_SETTINGS: Record<string, string> = {
   site_name: 'آرکا مرصاد',
@@ -61,6 +62,28 @@ export async function PUT(request: NextRequest) {
     const { settings } = await request.json();
     if (!settings || typeof settings !== 'object') {
       return NextResponse.json({ error: 'تنظیمات نامعتبر' }, { status: 400 });
+    }
+
+    // Before upserting, detect hero_slide_*_image keys that are being changed or
+    // cleared, and delete the previous file from disk to avoid orphan files.
+    // We only touch keys that match the pattern and only delete files that we
+    // ourselves uploaded (under /uploads/).
+    const keysToInspect = Object.keys(settings).filter(
+      (k) => /^hero_slide_\d+_image$/.test(k)
+    );
+    if (keysToInspect.length > 0) {
+      const existing = await db.siteSetting.findMany({
+        where: { key: { in: keysToInspect } },
+        select: { key: true, value: true },
+      });
+      const existingMap = new Map(existing.map((r) => [r.key, r.value]));
+      for (const key of keysToInspect) {
+        const oldValue = existingMap.get(key);
+        const newValue = String(settings[key]);
+        if (oldValue && oldValue !== newValue && isOurUpload(oldValue)) {
+          await deleteUpload(oldValue);
+        }
+      }
     }
 
     for (const [key, value] of Object.entries(settings)) {

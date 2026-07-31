@@ -642,3 +642,70 @@ Stage Summary:
 - Files changed: prisma/schema.prisma, .env, prisma/seed.ts (BATCH_SIZE + timeout), package.json (env -u DATABASE_URL on all prisma/dev scripts)
 - Old SQLite DB file at /home/z/my-project/db/custom.db still exists but unused (can be deleted later if desired)
 - Ready for production deployment to Liara (just need to set DATABASE_URL env var in Liara app settings)
+
+---
+Task ID: storage-refactor
+Agent: main
+Task: Refactor file upload/storage system — UUID naming, .gitignore, orphan cleanup on delete
+
+Work Log:
+- Explored all 4 upload APIs (hero, categories, brands, product images) + all delete endpoints
+- Discovered bug: AdminProducts.tsx frontend called POST /api/admin/upload which never existed — image upload for products was completely broken before this refactor
+- Created src/lib/storage.ts — centralized utility with:
+  * saveUpload(folder, mime, buffer) → UUID-based filename, returns /uploads/<folder>/<uuid>.<ext>
+  * saveUploadWithExt(folder, ext, buffer) → for explicit extension (e.g. SVG passthrough)
+  * saveSharpOutput(folder, ext, writeFn) → for sharp pipeline output (avoid double-write)
+  * deleteUpload(urlPath) → path-traversal-protected, never throws, no-op on null/external URLs
+  * deleteUploads(urlPaths[]) → batch delete
+  * isOurUpload(urlPath) → checks if URL starts with /uploads/
+  * All paths computed from process.cwd()/public/uploads so it works the same in dev + Liara
+  * mkdir({ recursive: true }) called on every save so missing dirs auto-create
+- Refactored 4 upload endpoints to use storage.ts:
+  * /api/admin/hero/upload — now UUID filenames
+  * /api/admin/categories/upload — now UUID filenames
+  * /api/admin/brands/upload — now UUID filenames
+  * /api/admin/products/[id]/images — NEW POST endpoint (was missing entirely), UUID filenames, sharp-optimized to 1200x1200 webp
+- Added file cleanup on every delete path:
+  * DELETE /api/admin/products/[id] → cascade-deletes ALL product image files via deleteUploads()
+  * DELETE /api/admin/products/[id]/images?imageId=N → deletes that image file
+  * DELETE /api/admin/brands?id=N → deletes brand logo file
+  * DELETE /api/admin/categories?id=N → deletes category image file
+  * PUT /api/admin/brands with logo change → deletes previous logo file
+  * PUT /api/admin/categories with image change → deletes previous image file
+  * PUT /api/admin/settings with hero_slide_N_image change → deletes previous hero file (covers "click X to clear" UI flow)
+  * POST /api/admin/hero/upload with slide=N → deletes previous hero file for that slide
+- Fixed frontend bug in AdminProducts.tsx: handleUpload() now calls POST /api/admin/products/{id}/images with Authorization header (was calling non-existent /api/admin/upload without auth header)
+- Added /public/uploads/ to .gitignore (so uploaded images never get committed to git)
+- Lint: clean (only pre-existing error in mersadent-clone/examples/websocket which is unrelated)
+- Browser verification (via curl since file inputs aren't directly accessible via agent-browser):
+  * Hero upload (slide 1): ✓ UUID URL, file on disk, HTTP 200
+  * Category image upload (id=1): ✓ UUID URL, file on disk
+  * Brand logo upload (id=1): ✓ UUID URL, file on disk
+  * Product image upload (product id=692): ✓ UUID URL, file on disk, DB record created
+  * Hero re-upload (replace): ✓ old file deleted, new UUID file created
+  * Hero clear via admin settings PUT (hero_slide_1_image=''): ✓ file deleted
+  * Category delete with image: ✓ file deleted from disk
+  * Brand delete with logo: ✓ logo file deleted from disk
+  * Product delete with 3 images: ✓ ALL 3 files cascade-deleted from disk + DB records gone
+  * SVG handling: sharp bypass works (saved as-is, not processed)
+  * Webp conversion: all PNG/JPG uploads become .webp via sharp
+
+Stage Summary:
+- All 4 upload types now use UUID-based filenames: /uploads/<folder>/<uuid>.<ext>
+- Orphan files are impossible: every replace/clear/delete also deletes the previous file
+- Path traversal protected: deleteUpload() only touches files inside public/uploads/
+- Files stored under public/uploads/ — ready to be mounted as Liara Persistent Disk in production
+- .gitignore updated so uploaded media never enters version control
+- Critical bug fixed: product image upload was completely broken before (frontend called non-existent endpoint)
+- Files changed:
+  * NEW: src/lib/storage.ts (utility)
+  * src/app/api/admin/hero/upload/route.ts (refactored)
+  * src/app/api/admin/categories/upload/route.ts (refactored)
+  * src/app/api/admin/brands/upload/route.ts (refactored)
+  * src/app/api/admin/products/[id]/images/route.ts (added POST endpoint + refactored DELETE)
+  * src/app/api/admin/products/[id]/route.ts (refactored DELETE for cascade cleanup)
+  * src/app/api/admin/brands/route.ts (added cleanup on PUT + DELETE)
+  * src/app/api/admin/categories/route.ts (added cleanup on PUT + DELETE)
+  * src/app/api/admin/settings/route.ts (added cleanup on hero_slide_*_image change)
+  * src/components/admin/AdminProducts.tsx (fixed frontend to call correct endpoint)
+  * .gitignore (added /public/uploads/)

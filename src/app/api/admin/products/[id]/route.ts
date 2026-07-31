@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { verifyAdminToken, unauthorizedResponse } from '@/lib/admin-auth';
+import { deleteUploads, isOurUpload } from '@/lib/storage';
 
 export async function GET(
   request: NextRequest,
@@ -91,14 +92,13 @@ export async function DELETE(
       return NextResponse.json({ error: 'محصول یافت نشد' }, { status: 404 });
     }
 
-    const { unlink, readdir, rmdir } = await import('fs/promises');
-    const path = await import('path');
-    for (const img of product.images) {
-      try {
-        const filepath = path.join(process.cwd(), 'public', img.url);
-        await unlink(filepath);
-      } catch { /* ignore */ }
-    }
+    // Cascade-delete all image files on disk that belong to this product.
+    // (DB records are removed automatically by onDelete: Cascade on ProductImage,
+    // but the physical files need to be cleaned up explicitly.)
+    const imageUrls = product.images
+      .map((img) => img.url)
+      .filter((url): url is string => isOurUpload(url));
+    await deleteUploads(imageUrls);
 
     await db.product.delete({ where: { id: parseInt(id) } });
     return NextResponse.json({ success: true });

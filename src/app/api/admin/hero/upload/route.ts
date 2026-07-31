@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyAdminToken, unauthorizedResponse, logActivity } from '@/lib/admin-auth';
-import { writeFile, mkdir } from 'fs/promises';
-import path from 'path';
+import { saveSharpOutput, saveUploadWithExt, ALLOWED_IMAGE_TYPES, isOurUpload, deleteUpload } from '@/lib/storage';
 import sharp from 'sharp';
 
 const MAX_SIZE = 4 * 1024 * 1024; // 4MB (hero images are larger than logos)
-const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/svg+xml', 'image/gif'];
 
 export async function POST(request: NextRequest) {
   const payload = await verifyAdminToken(request);
@@ -20,7 +18,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'فایلی ارسال نشده است' }, { status: 400 });
     }
 
-    if (!ALLOWED_TYPES.includes(file.type)) {
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
       return NextResponse.json(
         { error: 'فرمت فایل مجاز نیست. فقط PNG, JPG, WebP, SVG, GIF' },
         { status: 400 }
@@ -37,25 +35,38 @@ export async function POST(request: NextRequest) {
     const slideNum = slideNumRaw ? parseInt(String(slideNumRaw)) : null;
     const isSvg = file.type === 'image/svg+xml';
 
-    const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'hero');
-    await mkdir(uploadsDir, { recursive: true });
-
-    const timestamp = Date.now();
-    const idPart = slideNum && !Number.isNaN(slideNum) ? `slide-${slideNum}` : `temp-${timestamp}`;
-    const urlPath = `/uploads/hero/hero-${idPart}-${timestamp}.${isSvg ? 'svg' : 'webp'}`;
-    const fullPath = path.join(uploadsDir, path.basename(urlPath));
-
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
+    // Generate a UUID-based filename via the storage utility.
+    // SVGs are saved as-is; everything else is resized to 1920x1080 and converted to webp.
+    let urlPath: string;
     if (isSvg) {
-      await writeFile(fullPath, buffer);
+      urlPath = await saveUploadWithExt('hero', 'svg', buffer);
     } else {
-      // Hero images are wide banners — resize to max 1920px wide, convert to webp
-      await sharp(buffer)
-        .resize({ width: 1920, height: 1080, fit: 'inside', withoutEnlargement: true })
-        .webp({ quality: 82 })
-        .toFile(fullPath);
+      urlPath = await saveSharpOutput('hero', 'webp', (fullPath) =>
+        sharp(buffer)
+          .resize({ width: 1920, height: 1080, fit: 'inside', withoutEnlargement: true })
+          .webp({ quality: 82 })
+          .toFile(fullPath)
+      );
+    }
+
+    // If slideNum is provided, persist the new URL to SiteSetting and delete
+    // the previous hero image file (if it was one of ours) to avoid orphan files.
+    if (slideNum && !Number.isNaN(slideNum)) {
+      const settingKey = `hero_slide_${slideNum}_image`;
+      const existing = await (await import('@/lib/db')).db.siteSetting.findUnique({
+        where: { key: settingKey },
+      });
+      if (existing?.value && isOurUpload(existing.value)) {
+        await deleteUpload(existing.value);
+      }
+      await (await import('@/lib/db')).db.siteSetting.upsert({
+        where: { key: settingKey },
+        update: { value: urlPath },
+        create: { key: settingKey, value: urlPath },
+      });
     }
 
     await logActivity('hero.image.upload', `تصویر اسلایدشو آپلود شد`, payload.sub);
