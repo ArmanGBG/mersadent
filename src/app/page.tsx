@@ -132,6 +132,10 @@ interface Product {
   tags?: { tag: { id: number; name: string; slug: string; type: string } }[];
 }
 
+interface ProductsApiResponse {
+  products?: Product[];
+}
+
 interface BlogCategory {
   id: number;
   name: string;
@@ -1089,14 +1093,19 @@ function HomePage({ onNavigate, user, onAuthRequired, onAddToCart }: { onNavigat
     });
   };
 
+
+
   useEffect(() => {
     Promise.all([
-      fetch('/api/categories').then(r => r.json()).then(d => Array.isArray(d) ? d : []),
-      fetch('/api/featured').then(r => r.json()).then(d => Array.isArray(d) ? d : []),
-      fetch('/api/brands').then(r => r.json()).then(d => Array.isArray(d) ? d : []),
-      fetch('/api/brands?all=true').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []),
-      fetch('/api/products?discounted=true&limit=20').then(r => r.json()).then(d => d.products || []).catch(() => []),
+      fetch('/api/categories').then(r => r.ok ? r.json() : []).then(d => Array.isArray(d) ? d : []).catch(() => []),
+      fetch('/api/featured').then(r => r.ok ? r.json() : []).then(d => Array.isArray(d) ? d : []).catch(() => []),
+      fetch('/api/brands').then(r => r.ok ? r.json() : []).then(d => Array.isArray(d) ? d : []).catch(() => []),
+      fetch('/api/brands?all=true').then(r => r.ok ? r.json() : []).then(d => Array.isArray(d) ? d : []).catch(() => []),
+      fetch('/api/products?discounted=true&limit=20').then(r => r.ok ? r.json() : {}).then((d: ProductsApiResponse) => Array.isArray(d?.products) ? d.products : []).catch(() => []),
     ])
+
+
+
       .then(([cats, feat, brs, allBrands, discProds]) => {
         setCategories(cats);
         setFeatured(feat);
@@ -1213,7 +1222,7 @@ function HomePage({ onNavigate, user, onAuthRequired, onAddToCart }: { onNavigat
       </section>
 
       {/* ===== FEATURED PRODUCTS ===== */}
-      {(featured || []).length > 0 && (
+      {Array.isArray(featured) && featured.length > 0 && (
         <section className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-base sm:text-lg font-bold text-mersadent-dark">محصولات ویژه</h2>
@@ -1261,7 +1270,7 @@ function HomePage({ onNavigate, user, onAuthRequired, onAddToCart }: { onNavigat
       )}
 
       {/* ===== DISCOUNTED PRODUCTS ===== */}
-      {(discounted || []).length > 0 && (
+      {Array.isArray(discounted) && discounted.length > 0 && (
         <section className="bg-gradient-to-r from-red-50 to-orange-50 py-6">
           <div className="max-w-7xl mx-auto px-4 sm:px-6">
             <div className="flex items-center justify-between mb-4">
@@ -2218,40 +2227,45 @@ function ProductDetailPage({
               خانه
             </BreadcrumbLink>
           </BreadcrumbItem>
-          {product.category.parent && (
-            <>
-              {product.category.parent.parent && (
-                <>
-                  <BreadcrumbSeparator />
-                  <BreadcrumbItem>
-                    <BreadcrumbLink
-                      onClick={() => onNavigate({
-                        type: 'category',
-                        categoryId: product.category.parent.parent.id,
-                        slug: product.category.parent.parent.slug,
-                      })}
-                      className="cursor-pointer text-sm"
-                    >
-                      {product.category.parent.parent.name}
-                    </BreadcrumbLink>
-                  </BreadcrumbItem>
-                </>
-              )}
-              <BreadcrumbSeparator />
-              <BreadcrumbItem>
-                <BreadcrumbLink
-                  onClick={() => onNavigate({
-                    type: 'category',
-                    categoryId: product.category.parent.id,
-                    slug: product.category.parent.slug,
-                  })}
-                  className="cursor-pointer text-sm"
-                >
-                  {product.category.parent.name}
-                </BreadcrumbLink>
-              </BreadcrumbItem>
-            </>
-          )}
+          {product.category.parent && (() => {
+            const parent = product.category.parent;
+            const grandParent = parent.parent;
+
+            return (
+              <>
+                {grandParent && (
+                  <>
+                    <BreadcrumbSeparator />
+                    <BreadcrumbItem>
+                      <BreadcrumbLink
+                        onClick={() => onNavigate({
+                          type: 'category',
+                          categoryId: grandParent.id,
+                          slug: grandParent.slug,
+                        })}
+                        className="cursor-pointer text-sm"
+                      >
+                        {grandParent.name}
+                      </BreadcrumbLink>
+                    </BreadcrumbItem>
+                  </>
+                )}
+                <BreadcrumbSeparator />
+                <BreadcrumbItem>
+                  <BreadcrumbLink
+                    onClick={() => onNavigate({
+                      type: 'category',
+                      categoryId: parent.id,
+                      slug: parent.slug,
+                    })}
+                    className="cursor-pointer text-sm"
+                  >
+                    {parent.name}
+                  </BreadcrumbLink>
+                </BreadcrumbItem>
+              </>
+            );
+          })()}
           <BreadcrumbSeparator />
           <BreadcrumbItem>
             <BreadcrumbLink

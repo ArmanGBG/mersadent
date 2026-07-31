@@ -67,7 +67,7 @@ export async function PUT(request: NextRequest) {
     // Before upserting, detect hero_slide_*_image keys that are being changed or
     // cleared, and delete the previous file from disk to avoid orphan files.
     // We only touch keys that match the pattern and only delete files that we
-    // ourselves uploaded (under /uploads/).
+    // ourselves uploaded (under /api/uploads/).
     const keysToInspect = Object.keys(settings).filter(
       (k) => /^hero_slide_\d+_image$/.test(k)
     );

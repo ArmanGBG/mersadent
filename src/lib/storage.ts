@@ -6,8 +6,8 @@
  *   uploads can never overwrite each other (no timestamp collisions).
  * - Stores files under `public/uploads/<folder>/<uuid>.<ext>` so they are
  *   served as static assets by Next.js and survive on Liara's Persistent Disk.
- * - Persists only the **public relative URL** (e.g. `/uploads/products/abc.webp`)
- *   in the database — never the absolute filesystem path.
+  * - Persists only the **public relative URL** (e.g. `/api/uploads/products/abc.webp`)
+  *   in the database — never the absolute filesystem path.
  * - Provides a safe `deleteUpload` helper that only deletes files inside
  *   `public/uploads/` (path-traversal protected) and never throws.
  */
@@ -68,7 +68,7 @@ function sanitizeFolder(folder: string): string {
  * @param folder  Subfolder under `public/uploads/` (e.g. "products", "hero")
  * @param mime    Original mime type (used to derive the extension)
  * @param data    File contents as a Buffer
- * @returns       Public URL path, e.g. `/uploads/products/a1b2c3d4-....webp`
+ * @returns       Public URL path, e.g. `/api/uploads/products/a1b2c3d4-....webp`
  */
 export async function saveUpload(
   folder: string,
@@ -89,30 +89,30 @@ export async function saveUpload(
   await fs.writeFile(fullPath, data);
 
   // Return public URL path (relative to /public)
-  return `/uploads/${safeFolder}/${filename}`;
-}
+return `/api/uploads/${safeFolder}/${filename}`;
+  }
 
-/**
- * Save a raw Buffer with an explicit extension (bypasses mime→ext map).
- * Useful when we convert uploads to webp via sharp and want the output
- * extension to be `webp` regardless of the input mime type.
- */
-export async function saveUploadWithExt(
-  folder: string,
-  ext: string,
-  data: Buffer
-): Promise<string> {
-  const safeExt = ext.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-  if (!safeExt) throw new Error(`Invalid extension: "${ext}"`);
-  const safeFolder = sanitizeFolder(folder);
-  const dir = path.join(uploadsRoot(), safeFolder);
-  await fs.mkdir(dir, { recursive: true });
+  /**
+   * Save a raw Buffer with an explicit extension (bypasses mime→ext map).
+   * Useful when we convert uploads to webp via sharp and want the output
+   * extension to be `webp` regardless of the input mime type.
+   */
+  export async function saveUploadWithExt(
+   folder: string,
+   ext: string,
+   data: Buffer
+  ): Promise<string> {
+   const safeExt = ext.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+   if (!safeExt) throw new Error(`Invalid extension: "${ext}"`);
+   const safeFolder = sanitizeFolder(folder);
+   const dir = path.join(uploadsRoot(), safeFolder);
+   await fs.mkdir(dir, { recursive: true });
 
-  const filename = `${randomUUID()}.${safeExt}`;
-  const fullPath = path.join(dir, filename);
-  await fs.writeFile(fullPath, data);
+   const filename = `${randomUUID()}.${safeExt}`;
+   const fullPath = path.join(dir, filename);
+   await fs.writeFile(fullPath, data);
 
-  return `/uploads/${safeFolder}/${filename}`;
+   return `/api/uploads/${safeFolder}/${filename}`;
 }
 
 /**
@@ -124,7 +124,7 @@ export async function saveUploadWithExt(
 export async function saveSharpOutput(
   folder: string,
   ext: string,
-  writeFn: (fullPath: string) => Promise<void>
+  writeFn: (fullPath: string) => Promise<unknown>
 ): Promise<string> {
   const safeExt = ext.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
   if (!safeExt) throw new Error(`Invalid extension: "${ext}"`);
@@ -136,24 +136,24 @@ export async function saveSharpOutput(
   const fullPath = path.join(dir, filename);
   await writeFn(fullPath);
 
-  return `/uploads/${safeFolder}/${filename}`;
+  return `/api/uploads/${safeFolder}/${filename}`;
 }
 
 /**
- * Convert a public URL path (e.g. `/uploads/products/abc.webp`) to its
+ * Convert a public URL path (e.g. `/api/uploads/products/abc.webp`) to its
  * absolute filesystem path. Returns `null` if the URL is not a valid upload
  * path under `public/uploads/` — this guard prevents path traversal attacks.
  *
- * Only URLs starting with `/uploads/` are considered. Anything else (external
+ * Only URLs starting with `/api/uploads/` are considered. Anything else (external
  * URLs, `/logo.png`, etc.) returns null and is therefore un-deletable, which
  * is intentional: we must never delete files we didn't create.
  */
 function urlToAbsolutePath(urlPath: string): string | null {
   if (!urlPath || typeof urlPath !== 'string') return null;
-  if (!urlPath.startsWith('/uploads/')) return null;
+  if (!urlPath.startsWith('/api/uploads/')) return null;
 
-  // Strip the leading "/uploads/" and split
-  const relative = urlPath.slice('/uploads/'.length);
+  // Strip the leading "/api/uploads/" and split
+  const relative = urlPath.slice('/api/uploads/'.length);
   if (!relative) return null;
 
   // Normalize and resolve safely under uploadsRoot()
@@ -199,5 +199,5 @@ export async function deleteUploads(urlPaths: (string | null | undefined)[]): Pr
  * whether we should attempt file deletion when replacing an image.
  */
 export function isOurUpload(urlPath: string | null | undefined): boolean {
-  return !!urlPath && urlPath.startsWith('/uploads/');
+  return !!urlPath && urlPath.startsWith('/api/uploads/');
 }

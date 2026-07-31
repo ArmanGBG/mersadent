@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 
-const SITE_NAME = 'مرسا دنت';
+const SITE_NAME = 'مرصادنت';
 const SITE_URL = 'https://mersadent.ir'; // replace with actual domain
-const SITE_DESCRIPTION = 'مرسا دنت – فروشگاه آنلاین مواد و تجهیزات دندانپزشکی با ضمانت اصالت کالا و ارسال سریع';
+const SITE_DESCRIPTION = 'مرصادنت - مواد و تجهیزات دندانپزشکی ';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -73,7 +73,7 @@ async function handleHomeSeo() {
   };
 
   return NextResponse.json({
-    title: `${SITE_NAME} – فروشگاه آنلاین مواد و تجهیزات دندانپزشکی`,
+    title: `${SITE_NAME} – کالای دندانپزشکی با ضمانت اصالت`,
     description: SITE_DESCRIPTION,
     ogType: 'website',
     ldJson,
@@ -99,12 +99,24 @@ async function handleProductSeo(productId: number) {
   const title = product.metaTitle || `خرید ${product.name} با قیمت مناسب | ${SITE_NAME}`;
   const description = product.metaDescription || `${product.name} - ${product.brand.name} - ${product.country || ''} | ${SITE_NAME} - ضمانت اصالت کالا`;
 
-  const categoryChain = [];
+  const categoryChain: string[] = [];
   if (product.category.parent?.parent) categoryChain.push(product.category.parent.parent.name);
   if (product.category.parent) categoryChain.push(product.category.parent.name);
   categoryChain.push(product.category.name);
 
   const priceValue = product.price ? product.price * 10 : 0; // Convert toman to rial
+
+  let additionalProps: { '@type': string; name: string; value: string }[] = [];
+  if (product.specs) {
+    try {
+      const specs: Record<string, string> = JSON.parse(product.specs);
+      additionalProps = Object.entries(specs).map(([name, value]) => ({
+        '@type': 'PropertyValue',
+        name,
+        value,
+      }));
+    } catch { /* ignore */ }
+  }
 
   const ldJson = {
     '@context': 'https://schema.org',
@@ -165,22 +177,8 @@ async function handleProductSeo(productId: number) {
         refundType: 'https://schema.org/FullRefund',
       },
     },
+    ...(additionalProps.length > 0 ? { additionalProperty: additionalProps } : {}),
   };
-
-  // Add dynamic specs from product.specs JSON
-  if (product.specs) {
-    try {
-      const specs: Record<string, string> = JSON.parse(product.specs);
-      const additionalProps = Object.entries(specs).map(([name, value]) => ({
-        '@type': 'PropertyValue',
-        name,
-        value,
-      }));
-      if (additionalProps.length > 0) {
-        ldJson.additionalProperty = additionalProps;
-      }
-    } catch { /* ignore */ }
-  }
 
   return NextResponse.json({
     title,
