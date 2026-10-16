@@ -16,6 +16,8 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
+import { IRAN_PROVINCES } from '@/lib/iran-cities';
+import { SearchableSelect } from '@/components/admin/SearchableSelect';
 
 interface CartItem {
   id: number;
@@ -32,6 +34,8 @@ interface CartData {
   id: number;
   items: CartItem[];
   totalPrice: number;
+  shippingCost: number;
+  finalPrice: number;
   itemCount: number;
 }
 
@@ -78,7 +82,10 @@ export function CheckoutPage({ user, onNavigate, onAuthRequired, onCartChange, o
   const [selectedAddress, setSelectedAddress] = useState<number | null>(null);
   const [shippingName, setShippingName] = useState('');
   const [shippingPhone, setShippingPhone] = useState('');
+  const [shippingProvince, setShippingProvince] = useState('');
+  const [shippingCity, setShippingCity] = useState('');
   const [shippingAddress, setShippingAddress] = useState('');
+  const [shippingPostalCode, setShippingPostalCode] = useState('');
   const [notes, setNotes] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'online' | 'cod'>('cod');
   const [loading, setLoading] = useState(true);
@@ -103,7 +110,10 @@ export function CheckoutPage({ user, onNavigate, onAuthRequired, onCartChange, o
       const defAddr = addrs.find(a => a.isDefault);
       if (defAddr) {
         setSelectedAddress(defAddr.id);
+        setShippingProvince(defAddr.province || '');
+        setShippingCity(defAddr.city || '');
         setShippingAddress(defAddr.fullAddress);
+        setShippingPostalCode(defAddr.postalCode || '');
       }
       setLoading(false);
     });
@@ -111,12 +121,15 @@ export function CheckoutPage({ user, onNavigate, onAuthRequired, onCartChange, o
 
   const handleSelectAddress = (addr: Address) => {
     setSelectedAddress(addr.id);
+    setShippingProvince(addr.province || '');
+    setShippingCity(addr.city || '');
     setShippingAddress(addr.fullAddress);
+    setShippingPostalCode(addr.postalCode || '');
   };
 
   const handleSubmit = async () => {
-    if (!shippingPhone || !shippingAddress) {
-      toast.error('لطفاً شماره تلفن و آدرس ارسال را وارد کنید');
+    if (!shippingPhone || !shippingProvince || !shippingCity || !shippingAddress || !shippingPostalCode) {
+      toast.error('لطفاً استان، شهر، آدرس کامل، کد پستی و شماره تلفن را وارد کنید');
       return;
     }
     if (cart?.items.length === 0) {
@@ -132,7 +145,7 @@ export function CheckoutPage({ user, onNavigate, onAuthRequired, onCartChange, o
         body: JSON.stringify({
           shippingName: shippingName || null,
           shippingPhone,
-          shippingAddress,
+           shippingAddress: `${shippingProvince}، ${shippingCity}، ${shippingAddress}، کد پستی: ${shippingPostalCode}`,
           notes: notes || null,
           paymentMethod,
         }),
@@ -240,13 +253,24 @@ export function CheckoutPage({ user, onNavigate, onAuthRequired, onCartChange, o
                 </div>
                 <Separator />
                 <div className="flex justify-between">
-                  <span className="text-sm font-bold text-mersadent-dark">جمع کل:</span>
-                  <span className="text-base font-extrabold text-mersadent-accent">{formatPrice(cart.totalPrice)}</span>
+                  <span className="text-sm text-gray-500">مبلغ کالاها:</span>
+                  <span className="font-medium text-gray-700">{formatPrice(cart.totalPrice)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-gray-500">هزینه ارسال:</span>
+                  <span className="font-medium text-gray-700">
+                    {cart.shippingCost === 0 ? <span className="text-green-600">رایگان</span> : formatPrice(cart.shippingCost)}
+                  </span>
+                </div>
+                <Separator />
+                <div className="flex justify-between">
+                  <span className="text-sm font-bold text-mersadent-dark">مبلغ قابل پرداخت:</span>
+                  <span className="text-base font-extrabold text-mersadent-accent">{formatPrice(cart.finalPrice)}</span>
                 </div>
 
                 <Button
                   onClick={handleSubmit}
-                  disabled={submitting || !shippingPhone || !shippingAddress}
+                   disabled={submitting || !shippingPhone || !shippingProvince || !shippingCity || !shippingAddress || !shippingPostalCode}
                   className="w-full bg-mersadent-accent hover:bg-mersadent-accent/90 text-white rounded-xl h-11 font-semibold mt-2"
                 >
                   {submitting ? (
@@ -317,21 +341,65 @@ export function CheckoutPage({ user, onNavigate, onAuthRequired, onCartChange, o
                     <Input
                       value={shippingPhone}
                       onChange={(e) => setShippingPhone(e.target.value)}
-                      placeholder="09123456789"
+                       placeholder="+989123456789"
                       className="h-10 text-sm"
                       dir="ltr"
-                      maxLength={11}
+                      maxLength={13}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-medium text-gray-600">استان <span className="text-red-500">*</span></label>
+                    <SearchableSelect
+                      value={shippingProvince}
+                      onChange={(v) => {
+                        setShippingProvince(v);
+                        setShippingCity('');
+                        setSelectedAddress(null);
+                      }}
+                      options={Object.keys(IRAN_PROVINCES).map(p => ({ label: p, value: p }))}
+                      placeholder="انتخاب استان..."
+                      className="h-10"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-medium text-gray-600">شهر <span className="text-red-500">*</span></label>
+                    <SearchableSelect
+                      value={shippingCity}
+                      onChange={(v) => {
+                        setShippingCity(v);
+                        setSelectedAddress(null);
+                      }}
+                      options={shippingProvince ? (IRAN_PROVINCES as any)[shippingProvince].map((c: string) => ({ label: c, value: c })) : []}
+                      placeholder="انتخاب شهر..."
+                      disabled={!shippingProvince}
+                      className="h-10"
                     />
                   </div>
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-medium text-gray-600">آدرس کامل <span className="text-red-500">*</span></label>
+                    <label className="text-xs font-medium text-gray-600">آدرس کامل <span className="text-red-500">*</span></label>
                   <Textarea
                     value={shippingAddress}
                     onChange={(e) => setShippingAddress(e.target.value)}
-                    placeholder="آدرس کامل شامل خیابان، کوچه، پلاک، واحد"
+                    placeholder="خیابان، کوچه، پلاک، واحد"
                     className="min-h-[80px] text-sm resize-none"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-gray-600">کد پستی <span className="text-red-500">*</span></label>
+                  <Input
+                    value={shippingPostalCode}
+                    onChange={(e) => { setShippingPostalCode(e.target.value.replace(/\D/g, '').slice(0, 10)); setSelectedAddress(null); }}
+                    placeholder="۱۰ رقم کد پستی"
+                    className="h-10 text-sm"
+                    dir="ltr"
+                    inputMode="numeric"
+                    maxLength={10}
                   />
                 </div>
 

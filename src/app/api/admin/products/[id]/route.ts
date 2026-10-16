@@ -42,13 +42,23 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { name, slug, model, price, priceType, availability, featured, categoryId, brandId, order, description, strengths, weaknesses, metaTitle, metaDescription, keywords } = body;
+    const { name, slug, model, price, priceType, availability, stockQuantity, featured, categoryId, brandId, order, description, strengths, weaknesses, metaTitle, metaDescription, keywords } = body;
 
     if (!name) {
       return NextResponse.json({ error: 'نام محصول الزامی است' }, { status: 400 });
     }
 
-    const updateData: any = { name, model: model ?? null, priceType: priceType || 'fixed', availability: availability || 'in_stock', featured: !!featured };
+    let parsedStock: number | undefined = undefined;
+    let finalAvailability = availability || 'in_stock';
+    if (stockQuantity !== undefined) {
+      parsedStock = stockQuantity === '' ? 0 : parseInt(stockQuantity);
+      if (parsedStock !== undefined && parsedStock <= 0) {
+        finalAvailability = 'out_of_stock';
+      }
+    }
+
+    const updateData: any = { name, model: model ?? null, priceType: priceType || 'fixed', availability: finalAvailability, featured: !!featured };
+    if (parsedStock !== undefined) updateData.stockQuantity = parsedStock;
     if (price !== undefined) updateData.price = price === '' ? null : parseInt(price);
     if (slug !== undefined) updateData.slug = slug;
     if (categoryId !== undefined) updateData.categoryId = parseInt(categoryId);

@@ -1,19 +1,16 @@
+export const dynamic = "force-dynamic";
 import type { Metadata } from "next";
-import { Vazirmatn } from "next/font/google";
-import { Geist_Mono } from "next/font/google";
+
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
+import { AppProvider } from "@/contexts/AppContext";
+import { db } from "@/lib/db";
+import { CompareProvider, CompareFloatingBar } from "@/components/compare";
+import { Header } from "@/components/layout/Header";
+import { Footer } from "@/components/layout/Footer";
+import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
 
-const vazirmatn = Vazirmatn({
-  subsets: ["arabic"],
-  variable: "--font-vazirmatn",
-  display: "swap",
-});
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "MersaDent | مرصادنت - تأمین‌کننده تجهیزات دندانپزشکی",
@@ -25,19 +22,46 @@ export const metadata: Metadata = {
     description: "تأمین‌کننده تجهیزات دندانپزشکی",
     type: "website",
   },
+  icons: {
+    icon: [
+      { url: '/favicon.ico' },
+      { url: '/logo.png', type: 'image/png' },
+    ],
+    shortcut: '/favicon.ico',
+    apple: '/logo.png',
+  },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+
+  // Fetch site settings server-side for Footer and Layout
+  const settingsRows = await db.siteSetting.findMany();
+  const settings: Record<string, string> = {};
+  settingsRows.forEach(r => settings[r.key] = r.value);
+
   return (
     <html lang="fa" dir="rtl" suppressHydrationWarning>
+      <head>
+        <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.0.0/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
+      </head>
       <body
-        className={`${vazirmatn.variable} ${geistMono.variable} font-sans antialiased bg-background text-foreground`}
+        className={`font-vazirmatn font-sans antialiased bg-mersadent-bg text-foreground min-h-screen flex flex-col`}
       >
-        {children}
+        <AppProvider>
+          <CompareProvider>
+            <Header />
+            <main className="flex-1">
+              {children}
+            </main>
+            <Footer settings={settings} />
+            <MobileBottomNav />
+            <CompareFloatingBar />
+          </CompareProvider>
+        </AppProvider>
         <Toaster />
       </body>
     </html>

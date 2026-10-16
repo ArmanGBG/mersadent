@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { verifyUserToken, unauthorizedResponse } from '@/lib/user-auth';
+import { canonicalizePhone } from '@/lib/otp';
 
 export async function PUT(request: NextRequest) {
   const payload = await verifyUserToken(request);
@@ -8,13 +9,14 @@ export async function PUT(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { name, phone, email } = body;
+    const { name, phone, email, userType } = body;
 
     // Build update data (only include provided fields)
-    const updateData: { name?: string; phone?: string; email?: string } = {};
+    const updateData: { name?: string; phone?: string; email?: string; userType?: string | null } = {};
     if (name !== undefined) updateData.name = name;
-    if (phone !== undefined) updateData.phone = phone;
+    if (phone !== undefined) updateData.phone = canonicalizePhone(phone);
     if (email !== undefined) updateData.email = email;
+    if (userType !== undefined) updateData.userType = userType;
 
     if (Object.keys(updateData).length === 0) {
       return NextResponse.json({ error: 'حداقل یک فیلد را وارد کنید' }, { status: 400 });
@@ -22,7 +24,7 @@ export async function PUT(request: NextRequest) {
 
     // If phone is being changed, validate format
     if (updateData.phone !== undefined) {
-      const phoneRegex = /^09\d{9}$/;
+      const phoneRegex = /^\+989\d{9}$/;
       if (!phoneRegex.test(updateData.phone)) {
         return NextResponse.json(
           { error: 'فرمت شماره موبایل نامعتبر است' },
@@ -49,7 +51,7 @@ export async function PUT(request: NextRequest) {
     const user = await db.user.update({
       where: { id: payload.userId },
       data: updateData,
-      select: { id: true, name: true, phone: true, email: true, avatar: true },
+      select: { id: true, name: true, phone: true, email: true, avatar: true, userType: true },
     });
 
     return NextResponse.json({ success: true, user });

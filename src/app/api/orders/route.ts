@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { verifyUserToken } from '@/lib/user-auth';
+import { canonicalizePhone } from '@/lib/otp';
 
 export async function GET(request: NextRequest) {
   const user = await verifyUserToken(request);
@@ -33,8 +34,9 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { shippingName, shippingPhone, shippingAddress, notes, paymentMethod } = body;
+    const normalizedShippingPhone = canonicalizePhone(typeof shippingPhone === 'string' ? shippingPhone : '');
 
-    if (!shippingPhone || !shippingAddress || !paymentMethod) {
+    if (!/^\+989\d{9}$/.test(normalizedShippingPhone) || !shippingAddress || !paymentMethod) {
       return NextResponse.json(
         { error: 'شماره تلفن، آدرس ارسال و روش پرداخت الزامی هستند' },
         { status: 400 }
@@ -66,12 +68,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'سبد خرید خالی است' }, { status: 400 });
     }
 
-    // Calculate total
-    const totalPrice = cart.items.reduce(
-      (sum, item) => sum + item.priceAtAdd * item.quantity,
-      0
-    );
-
     // Generate unique order number using timestamp + random suffix to avoid race conditions
     const orderNumber = `MRS-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
@@ -80,32 +76,84 @@ export async function POST(request: NextRequest) {
 
     // Create order with items in a transaction
     const order = await db.$transaction(async (tx) => {
+      let calculatedTotalPrice = 0;
+      const orderItemsData: any[] = [];
+
+      // 1. Verify stock and calculate fresh prices for all items
+      for (const item of cart.items) {
+        const productInfo = await tx.product.findUnique({
+          where: { id: item.productId }
+        });
+        
+        if (!productInfo) {
+          throw new Error(`محصول ${item.product.name} یافت نشد.`);
+        }
+        if (productInfo.stockQuantity < item.quantity) {
+          throw new Error(`موجودی محصول "${productInfo.name}" کافی نیست (موجودی: ${productInfo.stockQuantity}).`);
+        }
+
+        // Calculate current price based on DB
+        const basePrice = productInfo.price || 0;
+        const discountAmount = productInfo.discountPercent > 0 ? Math.floor(basePrice * (productInfo.discountPercent / 100)) : 0;
+        const currentUnitPrice = basePrice - discountAmount;
+
+        calculatedTotalPrice += currentUnitPrice * item.quantity;
+        
+        orderItemsData.push({
+          productId: item.productId,
+          productName: productInfo.name,
+          quantity: item.quantity,
+          unitPrice: currentUnitPrice,
+          totalPrice: currentUnitPrice * item.quantity,
+        });
+      }
+
+      // Calculate Shipping Cost
+      const FREE_SHIPPING_THRESHOLD = 5000000; // 5,000,000 Toman
+      const FLAT_SHIPPING_RATE = 50000; // 50,000 Toman
+      const shippingCost = calculatedTotalPrice >= FREE_SHIPPING_THRESHOLD ? 0 : FLAT_SHIPPING_RATE;
+      const finalTotalPrice = calculatedTotalPrice + shippingCost;
+
+      // 2. Create the order
       const newOrder = await tx.order.create({
         data: {
           orderNumber,
           userId: user.userId,
           status: 'pending',
-          totalPrice,
+          totalPrice: finalTotalPrice,
+          shippingCost,
           paymentMethod,
           paymentStatus,
           shippingName: shippingName || null,
-          shippingPhone,
+          shippingPhone: normalizedShippingPhone,
           shippingAddress,
           notes: notes || null,
           items: {
-            create: cart.items.map((item) => ({
-              productId: item.productId,
-              productName: item.product.name,
-              quantity: item.quantity,
-              unitPrice: item.priceAtAdd,
-              totalPrice: item.priceAtAdd * item.quantity,
-            })),
+            create: orderItemsData,
           },
         },
         include: { items: true },
       });
 
-      // Mark cart as converted
+      // 3. Decrement stock for all items
+      for (const item of cart.items) {
+        const productInfo = await tx.product.findUnique({
+          where: { id: item.productId }
+        });
+        
+        if (productInfo) {
+          const newStock = productInfo.stockQuantity - item.quantity;
+          await tx.product.update({
+            where: { id: item.productId },
+            data: {
+              stockQuantity: newStock,
+              availability: newStock <= 0 ? 'out_of_stock' : productInfo.availability
+            }
+          });
+        }
+      }
+
+      // 4. Mark cart as converted
       await tx.cart.update({
         where: { id: cart.id },
         data: { status: 'converted' },
@@ -130,8 +178,11 @@ export async function POST(request: NextRequest) {
       paymentMethod: order.paymentMethod,
       paymentStatus: order.paymentStatus,
     }, { status: 201 });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Order create error:', error);
+    if (error.message && error.message.includes('موجودی محصول')) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     return NextResponse.json({ error: 'خطا در ثبت سفارش' }, { status: 500 });
   }
 }

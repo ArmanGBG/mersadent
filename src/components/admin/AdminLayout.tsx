@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import {
   LayoutDashboard, Package, FolderOpen, Award, FileText, FolderCog,
-  Settings, LogOut, Menu, X, ChevronRight, ShoppingCart
+  Settings, Users, LogOut, Menu, X, ChevronRight, ShoppingCart
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -17,6 +17,7 @@ const NAV_ITEMS = [
   { id: 'blog', label: 'مقالات', icon: FileText },
   { id: 'blog-categories', label: 'دسته بلاگ', icon: FolderCog },
   { id: 'orders', label: 'سفارشات', icon: ShoppingCart },
+  { id: 'users', label: 'مشتریان', icon: Users },
   { id: 'settings', label: 'تنظیمات', icon: Settings },
 ];
 

@@ -1,15 +1,16 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
   typescript: {
     ignoreBuildErrors: true,
   },
   reactStrictMode: false,
-  // Note: `output: "standalone"` is intentionally NOT set.
-  // We use `next start` which serves `public/` at runtime — this is what
-  // lets the Liara Persistent Disk mounted at /app/public/uploads serve
-  // freshly uploaded images without a rebuild.
+  // Limit memory usage during build for Liara to prevent 20-min timeouts
+  experimental: {
+    cpus: 1,
+    workerThreads: false,
+    memoryBasedWorkersCount: true,
+  },
 };
 
 export default nextConfig;

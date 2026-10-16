@@ -18,18 +18,18 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
-  Search, Plus, Pencil, Trash2, Upload, X, ChevronLeft, ChevronRight, ImageIcon, Loader2, Wand2, FileText, CheckCircle2, AlertTriangle
+  Search, Plus, Pencil, Trash2, Upload, X, ChevronLeft, ChevronRight, ImageIcon, Loader2, FileText, CheckCircle2, AlertTriangle
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { adminFetch, formatNumber, toSlug } from '@/lib/admin-utils';
-import { parseSuperPrompt } from '@/lib/parse-super-prompt';
 import { SearchableSelect } from './SearchableSelect';
 import { CategoryCascader } from './CategoryCascader';
 
 interface AdminProduct {
   id: number; name: string; slug: string; model: string | null;
-  price: number | null; priceType: string; availability: string;
+  price: number | null; priceType: string; availability: string; stockQuantity: number;
   specs: string | null;
   featured: boolean; visible: boolean; order: number; discountPercent: number;
   description: string | null;
@@ -65,7 +65,7 @@ interface CustomSpec { label: string; value: string }
 
 interface ProductForm {
   name: string; slug: string; model: string; price: string; priceType: string;
-  availability: string; categoryId: string; brandId: string;
+  availability: string; stockQuantity: string; categoryId: string; brandId: string;
   featured: boolean; visible: boolean; discountPercent: string;
   description: string; strengths: string[]; weaknesses: string[];
   metaTitle: string; metaDescription: string; keywords: string;
@@ -75,7 +75,7 @@ interface ProductForm {
 }
 
 const emptyProduct: ProductForm = {
-  name: '', slug: '', model: '', price: '', priceType: 'fixed', availability: 'in_stock',
+  name: '', slug: '', model: '', price: '', priceType: 'fixed', availability: 'in_stock', stockQuantity: '0',
   categoryId: '', brandId: '', featured: false, visible: true, discountPercent: '0',
   description: '', strengths: [], weaknesses: [], metaTitle: '', metaDescription: '', keywords: '',
   sku: '', country: '', warranty: '', weight: '',
@@ -106,15 +106,13 @@ export function AdminProducts({ token }: { token: string }) {
   const [saving, setSaving] = useState(false);
 
   // Super-prompt state
-  const [superPromptText, setSuperPromptText] = useState('');
-  const [parsing, setParsing] = useState(false);
 
   // Delete state
   const [deleteTarget, setDeleteTarget] = useState<AdminProduct | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   // Image dialog
-  const [imageProduct, setImageProduct] = useState<AdminProduct | null>(null);
+  const [activeTab, setActiveTab] = useState("basic");
   const [images, setImages] = useState<{ id: number; url: string; alt: string | null; order: number }[]>([]);
   const [uploading, setUploading] = useState(false);
 
@@ -160,12 +158,31 @@ export function AdminProducts({ token }: { token: string }) {
 
   const openCreate = () => {
     setEditing(null);
+    setImages([]);
+    setActiveTab("basic");
     setForm({ ...emptyProduct });
-    setSuperPromptText('');
     setDialogOpen(true);
   };
 
   // Inline "add country" — creates a Country row, appends to local list, and selects it
+
+  // Inline create brand
+  const handleCreateBrand = async (name: string) => {
+    if (!name.trim()) return;
+    try {
+      const res = await adminFetch(token, '/api/admin/brands', {
+        method: 'POST',
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json();
+      if (data.error) { toast.error(data.error); return; }
+      const created = data.brand;
+      setBrands(prev => [...prev, created]);
+      setForm(f => ({ ...f, brandId: String(created.id) }));
+      toast.success(`برند «${created.name}» اضافه شد`);
+    } catch { toast.error('خطا در ایجاد برند'); }
+  };
+
   const handleAddCountry = async () => {
     const name = newCountryName.trim();
     if (!name) { toast.error('نام کشور را وارد کنید'); return; }
@@ -202,6 +219,7 @@ export function AdminProducts({ token }: { token: string }) {
 
   const openEdit = (p: AdminProduct) => {
     setEditing(p);
+    fetchImages(p.id);
     let parsedTypeFields: TypeFields = {};
     try { if (p.typeFields) parsedTypeFields = JSON.parse(p.typeFields); } catch { parsedTypeFields = {}; }
     let parsedCustomSpecs: CustomSpec[] = [];
@@ -213,6 +231,7 @@ export function AdminProducts({ token }: { token: string }) {
       price: p.price !== null ? String(p.price) : '',
       priceType: p.priceType,
       availability: p.availability,
+      stockQuantity: String(p.stockQuantity ?? 0),
       categoryId: String(p.category.id),
       brandId: String(p.brand.id),
       featured: p.featured,
@@ -232,11 +251,10 @@ export function AdminProducts({ token }: { token: string }) {
       typeFields: parsedTypeFields,
       customSpecs: parsedCustomSpecs,
     });
-    setSuperPromptText('');
     setDialogOpen(true);
   };
 
-  const handleSave = async () => {
+  const handleSave = async (stay: boolean = false) => {
     if (!form.name || !form.categoryId || !form.brandId) {
       toast.error('نام، دسته‌بندی و برند الزامی هستند');
       return;
@@ -261,6 +279,7 @@ export function AdminProducts({ token }: { token: string }) {
         discountPercent: Number(form.discountPercent) || 0,
         priceType: form.priceType,
         availability: form.availability,
+        stockQuantity: parseInt(form.stockQuantity) || 0,
         categoryId: Number(form.categoryId),
         brandId: Number(form.brandId),
         featured: form.featured,
@@ -291,51 +310,23 @@ export function AdminProducts({ token }: { token: string }) {
         const data = await res.json();
         if (data.error) { toast.error(data.error); return; }
         toast.success('محصول ایجاد شد');
+        if (stay && data.product) {
+          setEditing(data.product);
+          fetchImages(data.product.id);
+          setActiveTab('images');
+          loadProducts(); // refresh background list
+          return;
+        }
       }
-      setDialogOpen(false);
-      loadProducts();
+      if (!stay) {
+        setDialogOpen(false);
+        loadProducts();
+      }
     } catch { toast.error('خطا در ذخیره محصول'); }
     finally { setSaving(false); }
   };
 
-  const handleParseSuperPrompt = () => {
-    if (!superPromptText.trim()) {
-      toast.error('ابتدا متن خروجی را وارد کنید');
-      return;
-    }
-    setParsing(true);
-    // Use setTimeout to allow UI to update before synchronous parse
-    setTimeout(() => {
-      try {
-        const parsed = parseSuperPrompt(superPromptText);
-        setForm(f => ({
-          ...f,
-          description: parsed.description || f.description,
-          strengths: parsed.strengths.length > 0 ? parsed.strengths : f.strengths,
-          weaknesses: parsed.weaknesses.length > 0 ? parsed.weaknesses : f.weaknesses,
-          metaTitle: parsed.metaTitle || f.metaTitle,
-          metaDescription: parsed.metaDescription || f.metaDescription,
-          keywords: parsed.keywords || f.keywords,
-        }));
-        const foundCount = [
-          parsed.description ? 'توضیحات' : '',
-          parsed.strengths.length ? `${parsed.strengths.length} نقطه قوت` : '',
-          parsed.weaknesses.length ? `${parsed.weaknesses.length} نقطه ضعف` : '',
-        ].filter(Boolean);
-        if (foundCount.length > 0) {
-          toast.success(`تحلیل موفق: ${foundCount.join('، ')}`);
-        } else {
-          toast.warning('متن پردازش شد اما بخش مشخصی یافت نشد');
-        }
-      } catch (e) {
-        toast.error('خطا در تحلیل متن');
-        console.error('Parse error:', e);
-      } finally {
-        setParsing(false);
-      }
-    }, 50);
-  };
-
+  
   const removeStrength = (idx: number) => {
     setForm(f => ({ ...f, strengths: f.strengths.filter((_, i) => i !== idx) }));
   };
@@ -358,25 +349,29 @@ export function AdminProducts({ token }: { token: string }) {
     finally { setDeleting(false); }
   };
 
-  const openImages = async (p: AdminProduct) => {
-    setImageProduct(p);
+  const fetchImages = async (id: number) => {
     try {
-      const res = await adminFetch(token, `/api/admin/products/${p.id}/images`);
+      const res = await adminFetch(token, `/api/admin/products/${id}/images`);
       const data = await res.json();
       setImages(data.images || []);
     } catch { setImages([]); }
   };
+  
+  const openImagesTab = (p: AdminProduct) => {
+    openEdit(p);
+    setActiveTab("images");
+  };
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !imageProduct) return;
+    if (!file || !editing) return;
     setUploading(true);
     try {
       const fd = new FormData();
       fd.append('file', file);
       // Use the dedicated per-product images endpoint (POST /api/admin/products/[id]/images)
       // instead of the previous non-existent /api/admin/upload route.
-      const res = await fetch(`/api/admin/products/${imageProduct.id}/images`, {
+      const res = await fetch(`/api/admin/products/${editing.id}/images`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: fd,
@@ -384,15 +379,16 @@ export function AdminProducts({ token }: { token: string }) {
       const data = await res.json();
       if (data.error) { toast.error(data.error); return; }
       toast.success('تصویر آپلود شد');
-      openImages(imageProduct);
+      fetchImages(editing.id);
+      loadProducts();
     } catch { toast.error('خطا در آپلود'); }
     finally { setUploading(false); e.target.value = ''; }
   };
 
   const handleDeleteImage = async (imageId: number) => {
-    if (!imageProduct) return;
+    if (!editing) return;
     try {
-      const res = await adminFetch(token, `/api/admin/products/${imageProduct.id}/images?imageId=${imageId}`, { method: 'DELETE' });
+      const res = await adminFetch(token, `/api/admin/products/${editing.id}/images?imageId=${imageId}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.error) { toast.error(data.error); return; }
       toast.success('تصویر حذف شد');
@@ -443,6 +439,299 @@ export function AdminProducts({ token }: { token: string }) {
 
   const totalPages = Math.ceil(total / limit);
 
+
+  if (dialogOpen) {
+    return (
+      <div className="space-y-6 max-w-5xl mx-auto pb-24" dir="rtl">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-bold">{editing ? 'ویرایش محصول' : 'افزودن محصول جدید'}</h2>
+            <p className="text-muted-foreground mt-1 text-sm">اطلاعات محصول را به تفکیک در تب‌های زیر وارد کنید.</p>
+          </div>
+          <div className="flex gap-3">
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>انصراف و بازگشت</Button>
+            <Button onClick={() => handleSave(false)} disabled={saving} className="bg-[#16233F] hover:bg-[#1e2d4d]">
+              {saving && <Loader2 className="w-4 h-4 ml-2 animate-spin" />}
+              {editing ? 'بروزرسانی' : 'ایجاد محصول'}
+            </Button>
+          </div>
+        </div>
+
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full" dir="rtl">
+          <TabsList className="grid w-full grid-cols-5 mb-6">
+            <TabsTrigger value="basic">اطلاعات پایه</TabsTrigger>
+            <TabsTrigger value="specs">ویژگی‌ها</TabsTrigger>
+            <TabsTrigger value="content">محتوا</TabsTrigger>
+            <TabsTrigger value="seo">تنظیمات و سئو</TabsTrigger>
+            <TabsTrigger value="images">تصاویر محصول</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="basic" className="space-y-6 border p-6 rounded-lg bg-white shadow-sm">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2 md:col-span-2">
+                <Label>نام محصول *</Label>
+                <Input value={form.name} onChange={e => { setForm(f => ({ ...f, name: e.target.value })); if (!editing) setForm(ff => ({ ...ff, slug: toSlug(e.target.value) })); }} placeholder="نام محصول" />
+              </div>
+              <div className="space-y-2">
+                <Label>اسلاگ (slug)</Label>
+                <Input value={form.slug} onChange={e => setForm(f => ({ ...f, slug: e.target.value }))} placeholder="auto-generated" dir="ltr" className="text-left" />
+              </div>
+              <div className="space-y-2">
+                <Label>کد محصول (SKU)</Label>
+                <Input value={form.sku} onChange={e => setForm(f => ({ ...f, sku: e.target.value }))} placeholder="مثلاً WD-EP-100" dir="ltr" className="text-left" />
+              </div>
+              
+              <div className="space-y-2">
+                <Label>دسته‌بندی *</Label>
+                <CategoryCascader categories={categories} value={form.categoryId} onChange={v => setForm(f => ({ ...f, categoryId: v }))} />
+              </div>
+              
+              <div className="space-y-2">
+                <Label>برند *</Label>
+                <SearchableSelect
+                  options={brands.map(b => ({ value: String(b.id), label: b.name }))}
+                  value={form.brandId}
+                  onChange={v => setForm(f => ({ ...f, brandId: v }))}
+                  onCreateNew={handleCreateBrand}
+                  placeholder="انتخاب برند..."
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>نوع کالا (تخصصی) *</Label>
+                <Select value={form.productType} onValueChange={v => setForm(f => ({ ...f, productType: v }))}>
+                  <SelectTrigger><SelectValue placeholder="انتخاب نوع کالا..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="device">تجهیزات (دستگاه)</SelectItem>
+                    <SelectItem value="material">مواد مصرفی</SelectItem>
+                    <SelectItem value="tool">ابزارآلات</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>قیمت (تومان)</Label>
+                <Input type="number" min="0" value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} placeholder="قیمت به تومان (خالی = تماس بگیرید)" />
+              </div>
+              <div className="space-y-2">
+                <Label>درصد تخفیف</Label>
+                <Input type="number" min="0" max="100" value={form.discountPercent} onChange={e => setForm(f => ({ ...f, discountPercent: e.target.value }))} placeholder="مثلا 15" />
+              </div>
+              
+              <div className="space-y-2">
+                <Label>نوع قیمت</Label>
+                <Select value={form.priceType} onValueChange={v => setForm(f => ({ ...f, priceType: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="fixed">قیمت ثابت</SelectItem>
+                    <SelectItem value="call">تماس بگیرید</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>وضعیت موجودی</Label>
+                <Select value={form.availability} onValueChange={v => setForm(f => ({ ...f, availability: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="in_stock">موجود</SelectItem>
+                    <SelectItem value="out_of_stock">ناموجود</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>تعداد در انبار (عدد)</Label>
+                <Input type="number" min="0" value={form.stockQuantity} onChange={e => { const val = e.target.value; const num = parseInt(val) || 0; setForm(f => ({ ...f, stockQuantity: val, availability: num <= 0 ? 'out_of_stock' : 'in_stock' })); }} placeholder="تعداد موجودی" />
+              </div>
+
+              <div className="space-y-2 md:col-span-2 grid grid-cols-2 mt-4 bg-gray-50 p-4 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <Switch checked={form.featured} onCheckedChange={v => setForm(f => ({ ...f, featured: v }))} />
+                  <Label>محصول ویژه (نمایش در صفحه اصلی)</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Switch checked={form.visible} onCheckedChange={v => setForm(f => ({ ...f, visible: v }))} />
+                  <Label>نمایش در سایت</Label>
+                </div>
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="specs" className="space-y-6 border p-6 rounded-lg bg-white shadow-sm">
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+                <div className="space-y-2">
+                  <Label>کشور سازنده</Label>
+                  <div className="flex gap-2">
+                    <SearchableSelect options={countries.map(c => ({ value: c.name, label: c.name }))} value={form.country} onChange={v => setForm(f => ({ ...f, country: v }))} placeholder="انتخاب..." />
+                    <Button type="button" variant="outline" onClick={() => setAddingCountry(true)}><Plus className="w-4 h-4" /></Button>
+                  </div>
+                  {addingCountry && (
+                    <div className="flex items-center gap-2 mt-2 p-2 border rounded-md bg-gray-50">
+                      <Input placeholder="نام کشور..." value={newCountryName} onChange={e => setNewCountryName(e.target.value)} className="h-8 text-sm" />
+                      <Button type="button" size="sm" onClick={handleAddCountry} disabled={savingCountry}><CheckCircle2 className="w-4 h-4" /></Button>
+                      <Button type="button" size="sm" variant="ghost" onClick={() => setAddingCountry(false)}><X className="w-4 h-4" /></Button>
+                    </div>
+                  )}
+                </div>
+                
+                <div className="space-y-2">
+                  <Label>مدل کالا</Label>
+                  <Input value={form.model} onChange={e => setForm(f => ({ ...f, model: e.target.value }))} placeholder="مدل محصول" />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label>وزن</Label>
+                  <Input value={form.weight} onChange={e => setForm(f => ({ ...f, weight: e.target.value }))} placeholder="مثلاً ۱۰۶ گرم" />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label>گارانتی</Label>
+                  <Input value={form.warranty} onChange={e => setForm(f => ({ ...f, warranty: e.target.value }))} placeholder="مثلاً ۱ سال گارانتی" />
+                </div>
+             </div>
+
+             <Separator className="my-6" />
+             <div className="flex items-center justify-between mb-4">
+                <Label className="text-base font-semibold">مشخصات فنی دلخواه</Label>
+                <Button type="button" variant="outline" size="sm" onClick={addCustomSpec}>
+                  <Plus className="w-4 h-4 ml-1" /> افزودن مشخصه
+                </Button>
+             </div>
+             
+             {form.customSpecs.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4 bg-gray-50 rounded-lg">هیچ مشخصه دلخواهی اضافه نشده است.</p>
+             ) : (
+                <div className="space-y-3">
+                  {form.customSpecs.map((spec, idx) => (
+                    <div key={idx} className="flex items-start gap-2">
+                      <Input placeholder="عنوان (مثلاً: ابعاد)" value={spec.label} onChange={e => updateCustomSpec(idx, 'label', e.target.value)} className="w-1/3" />
+                      <Input placeholder="مقدار (مثلاً: 10x20 cm)" value={spec.value} onChange={e => updateCustomSpec(idx, 'value', e.target.value)} className="flex-1" />
+                      <Button type="button" variant="outline" size="icon" onClick={() => removeCustomSpec(idx)} className="text-red-500 hover:bg-red-50 hover:text-red-600 shrink-0">
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+             )}
+          </TabsContent>
+
+          <TabsContent value="content" className="space-y-6 border p-6 rounded-lg bg-white shadow-sm">
+            <div className="space-y-2">
+              <Label>توضیحات کامل (HTML/متن)</Label>
+              <Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="توضیحات جامع محصول..." className="min-h-[200px]" />
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+               <div className="space-y-4">
+                 <div className="flex items-center justify-between">
+                   <Label className="text-emerald-600">نقاط قوت</Label>
+                   <Button type="button" variant="outline" size="sm" onClick={() => setForm(f => ({ ...f, strengths: [...f.strengths, ''] }))}><Plus className="w-3 h-3 ml-1" /> افزودن</Button>
+                 </div>
+                 <div className="space-y-2">
+                   {form.strengths.map((s, idx) => (
+                     <div key={idx} className="flex gap-2">
+                       <Input value={s} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, strengths: f.strengths.map((st, i) => i === idx ? v : st) })); }} placeholder="نقطه قوت..." />
+                       <Button type="button" variant="ghost" size="icon" onClick={() => setForm(f => ({ ...f, strengths: f.strengths.filter((_, i) => i !== idx) }))}><X className="w-4 h-4" /></Button>
+                     </div>
+                   ))}
+                 </div>
+               </div>
+               
+               <div className="space-y-4">
+                 <div className="flex items-center justify-between">
+                   <Label className="text-red-600">نقاط ضعف</Label>
+                   <Button type="button" variant="outline" size="sm" onClick={() => setForm(f => ({ ...f, weaknesses: [...f.weaknesses, ''] }))}><Plus className="w-3 h-3 ml-1" /> افزودن</Button>
+                 </div>
+                 <div className="space-y-2">
+                   {form.weaknesses.map((s, idx) => (
+                     <div key={idx} className="flex gap-2">
+                       <Input value={s} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, weaknesses: f.weaknesses.map((st, i) => i === idx ? v : st) })); }} placeholder="نقطه ضعف..." />
+                       <Button type="button" variant="ghost" size="icon" onClick={() => setForm(f => ({ ...f, weaknesses: f.weaknesses.filter((_, i) => i !== idx) }))}><X className="w-4 h-4" /></Button>
+                     </div>
+                   ))}
+                 </div>
+               </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="seo" className="space-y-6 border p-6 rounded-lg bg-white shadow-sm">
+            <div className="space-y-2">
+              <Label>Meta Title (عنوان سئو)</Label>
+              <Input value={form.metaTitle} onChange={e => setForm(f => ({ ...f, metaTitle: e.target.value }))} placeholder="عنوان سئو (در صورت خالی بودن، نام محصول استفاده می‌شود)" />
+            </div>
+            
+            <div className="space-y-2">
+              <Label>کلمات کلیدی (Keywords)</Label>
+              <Input value={form.keywords} onChange={e => setForm(f => ({ ...f, keywords: e.target.value }))} placeholder="دندانپزشکی، مرصادنت، کامپوزیت (با ویرگول جدا کنید)" />
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Meta Description (توضیحات سئو)</Label>
+              <Textarea value={form.metaDescription} onChange={e => setForm(f => ({ ...f, metaDescription: e.target.value }))} placeholder="توضیحات متا (حداکثر ۱۶۰ کاراکتر)" className="min-h-[100px]" />
+              {form.metaDescription.length > 160 && (
+                <p className="text-xs text-amber-600 mt-1">طول توضیحات متا بیشتر از ۱۶۰ کاراکتر است ({form.metaDescription.length})</p>
+              )}
+            </div>
+          </TabsContent>
+          <TabsContent value="images" className="space-y-6 border p-6 rounded-lg bg-white shadow-sm">
+            {!editing ? (
+              <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                <ImageIcon className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                <h3 className="text-lg font-medium text-gray-700">افزودن گالری تصاویر</h3>
+                <p className="text-sm text-gray-500 mt-2 max-w-md mx-auto leading-relaxed">
+                  شما در حال ایجاد یک محصول جدید هستید. برای آپلود تصاویر متعدد و مدیریت آن‌ها (که به صورت کاملاً اتوماتیک به فرمت سریع و کم‌حجم WebP تبدیل می‌شوند)، لطفاً ابتدا <strong>اطلاعات پایه را ذخیره کنید</strong>.
+                </p>
+                <Button 
+                  onClick={() => handleSave(true)} 
+                  disabled={saving} 
+                  className="mt-6 bg-[#16233F] hover:bg-[#1e2d4d]"
+                >
+                  {saving ? <Loader2 className="w-4 h-4 ml-2 animate-spin" /> : <Upload className="w-4 h-4 ml-2" />}
+                  ذخیره و فعالسازی آپلود تصاویر
+                </Button>
+              </div>
+            ) : (
+              <div>
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-medium">مدیریت تصاویر محصول</h3>
+                  <label className="cursor-pointer">
+                    <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif" className="hidden" onChange={handleUpload} />
+                    <Button variant="outline" asChild disabled={uploading}>
+                      <span>
+                        {uploading ? <Loader2 className="w-4 h-4 ml-2 animate-spin" /> : <Upload className="w-4 h-4 ml-2" />}
+                        آپلود تصویر جدید
+                      </span>
+                    </Button>
+                  </label>
+                </div>
+                <p className="text-xs text-muted-foreground mb-6">فرمت‌های مجاز: PNG, JPG, WebP, SVG (حداکثر ۴ مگابایت). تصاویر به صورت اتوماتیک تغییر سایز داده و به WebP تبدیل می‌شوند.</p>
+                
+                {images.length === 0 ? (
+                  <p className="text-center text-muted-foreground py-12 border-2 border-dashed rounded-lg bg-gray-50">تصویری وجود ندارد</p>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                    {images.map(img => (
+                      <div key={img.id} className="relative group rounded-lg overflow-hidden border bg-gray-50 shadow-sm aspect-square flex items-center justify-center p-2">
+                        <img src={img.url} alt={img.alt || ''} className="w-full h-full object-contain" />
+                        <button
+                          onClick={() => handleDeleteImage(img.id)}
+                          className="absolute top-2 left-2 w-8 h-8 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md hover:bg-red-600"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
+      </div>
+    );
+  }
   return (
     <div className="space-y-4" dir="rtl">
       {/* Toolbar */}
@@ -502,7 +791,7 @@ export function AdminProducts({ token }: { token: string }) {
                       </td>
                       <td className="py-2.5 px-3">{availabilityLabel(p.availability)}</td>
                       <td className="py-2.5 px-3 text-center">
-                        <button onClick={() => openImages(p)} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-[#2FC4C9] transition-colors">
+                        <button onClick={() => openImagesTab(p)} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-[#2FC4C9] transition-colors">
                           <ImageIcon className="w-3.5 h-3.5" /> {p._count.images}
                         </button>
                       </td>
@@ -547,425 +836,6 @@ export function AdminProducts({ token }: { token: string }) {
         </div>
       )}
 
-      {/* Create/Edit Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" dir="rtl">
-          <DialogHeader>
-            <DialogTitle>{editing ? 'ویرایش محصول' : 'افزودن محصول جدید'}</DialogTitle>
-            <DialogDescription>اطلاعات محصول را وارد کنید</DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-            <div className="space-y-2 md:col-span-2">
-              <Label>نام محصول *</Label>
-              <Input
-                value={form.name}
-                onChange={e => { setForm(f => ({ ...f, name: e.target.value })); if (!editing) setForm(ff => ({ ...ff, slug: toSlug(e.target.value) })); }}
-                placeholder="نام محصول"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>اسلاگ (slug)</Label>
-              <Input value={form.slug} onChange={e => setForm(f => ({ ...f, slug: e.target.value }))} placeholder="auto-generated" dir="ltr" />
-            </div>
-            <div className="space-y-2">
-              <Label>مدل</Label>
-              <Input value={form.model} onChange={e => setForm(f => ({ ...f, model: e.target.value }))} placeholder="مدل محصول" />
-            </div>
-            <div className="space-y-2 md:col-span-2">
-              <Label>دسته‌بندی *</Label>
-              <CategoryCascader
-                categories={categories}
-                value={form.categoryId}
-                onChange={v => setForm(f => ({ ...f, categoryId: v }))}
-                searchPlaceholder="جستجوی نام دسته..."
-                emptyText="دسته‌ای یافت نشد"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>نوع محصول *</Label>
-              <Select value={form.productType} onValueChange={v => setForm(f => ({ ...f, productType: v }))}>
-                <SelectTrigger><SelectValue placeholder="انتخاب نوع محصول" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="device">دستگاه</SelectItem>
-                  <SelectItem value="material">مواد</SelectItem>
-                  <SelectItem value="tool">ابزار</SelectItem>
-                  <SelectItem value="consumable">مصرفی</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>برند *</Label>
-              <SearchableSelect
-                options={brands.map(b => ({ value: String(b.id), label: b.name }))}
-                value={form.brandId}
-                onChange={v => setForm(f => ({ ...f, brandId: v }))}
-                placeholder="انتخاب برند"
-                searchPlaceholder="جستجوی نام برند..."
-                emptyText="برندی یافت نشد"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>قیمت (تومان)</Label>
-              <Input
-                type="number"
-                value={form.price}
-                onChange={e => setForm(f => ({ ...f, price: e.target.value }))}
-                placeholder="خالی = تماس بگیرید"
-                dir="ltr"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>درصد تخفیف (۰ تا ۱۰۰)</Label>
-              <Input
-                type="number"
-                min="0"
-                max="100"
-                step="0.1"
-                value={form.discountPercent}
-                onChange={e => setForm(f => ({ ...f, discountPercent: e.target.value }))}
-                placeholder="0"
-                dir="ltr"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>نوع قیمت</Label>
-              <Select value={form.priceType} onValueChange={v => setForm(f => ({ ...f, priceType: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="fixed">قیمت ثابت</SelectItem>
-                  <SelectItem value="call">تماس بگیرید</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>موجودی</Label>
-              <Select value={form.availability} onValueChange={v => setForm(f => ({ ...f, availability: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="in_stock">موجود</SelectItem>
-                  <SelectItem value="out_of_stock">ناموجود</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-center gap-2 pt-6">
-              <Switch checked={form.featured} onCheckedChange={v => setForm(f => ({ ...f, featured: v }))} />
-              <Label>محصول ویژه</Label>
-            </div>
-            <div className="flex items-center gap-2">
-              <Switch checked={form.visible} onCheckedChange={v => setForm(f => ({ ...f, visible: v }))} />
-              <Label>نمایش در سایت</Label>
-            </div>
-            <div className="space-y-2">
-              <Label>کد محصول (SKU)</Label>
-              <Input value={form.sku} onChange={e => setForm(f => ({ ...f, sku: e.target.value }))} placeholder="مثلاً WD-EP-100" dir="ltr" />
-            </div>
-            <div className="space-y-2">
-              <Label>کشور سازنده</Label>
-              {addingCountry ? (
-                <div className="flex items-center gap-2">
-                  <Input
-                    value={newCountryName}
-                    onChange={e => setNewCountryName(e.target.value)}
-                    placeholder="نام کشور جدید"
-                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddCountry(); } }}
-                    autoFocus
-                  />
-                  <Button type="button" size="sm" onClick={handleAddCountry} disabled={savingCountry} className="bg-[#2FC4C9] hover:bg-[#2FC4C9]/90 text-white shrink-0">
-                    {savingCountry ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                    افزودن
-                  </Button>
-                  <Button type="button" size="sm" variant="ghost" onClick={() => { setAddingCountry(false); setNewCountryName(''); }} className="shrink-0">انصراف</Button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <div className="flex-1">
-                    <SearchableSelect
-                      options={countries.map(c => ({ value: c.name, label: c.name }))}
-                      value={form.country}
-                      onChange={v => setForm(f => ({ ...f, country: v }))}
-                      placeholder="انتخاب کشور"
-                      searchPlaceholder="جستجوی نام کشور..."
-                      emptyText="کشوری یافت نشد"
-                    />
-                  </div>
-                  <Button type="button" size="sm" variant="outline" onClick={() => setAddingCountry(true)} className="shrink-0">
-                    <Plus className="w-4 h-4 ml-1" /> کشور جدید
-                  </Button>
-                </div>
-              )}
-            </div>
-            <div className="space-y-2">
-              <Label>گارانتی</Label>
-              <Input value={form.warranty} onChange={e => setForm(f => ({ ...f, warranty: e.target.value }))} placeholder="مثلاً ۱ سال گارانتی" />
-            </div>
-            <div className="space-y-2">
-              <Label>وزن</Label>
-              <Input value={form.weight} onChange={e => setForm(f => ({ ...f, weight: e.target.value }))} placeholder="مثلاً ۱۰۶ گرم" dir="ltr" />
-            </div>
-            {/* ─── Type-Specific Fields ─── */}
-            {form.productType && (
-              <div className="md:col-span-2 mt-1">
-                <Separator className="mb-3" />
-                <p className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wide">
-                  مشخصات اختصاصی — {form.productType === 'device' ? 'دستگاه' : form.productType === 'material' ? 'مواد' : form.productType === 'tool' ? 'ابزار' : 'مصرفی'}
-                </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {form.productType === 'device' && (
-                    <>
-                      <div className="space-y-2">
-                        <Label>مدل دقیق</Label>
-                        <Input value={form.typeFields.exactModel || ''} onChange={e => setTypeField('exactModel', e.target.value)} placeholder="مثلاً X-Smart Pro" />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>مشخصات فنی کلیدی</Label>
-                        <Input value={form.typeFields.keySpecs || ''} onChange={e => setTypeField('keySpecs', e.target.value)} placeholder="سرعت: 40000rpm | گشتاور: 70Ncm" />
-                      </div>
-                      <div className="flex items-center gap-2 md:col-span-2">
-                        <Switch checked={!!form.typeFields.autoclavable} onCheckedChange={v => setTypeField('autoclavable', v)} />
-                        <Label>قابلیت اتوکلاو شدن</Label>
-                      </div>
-                    </>
-                  )}
-                  {form.productType === 'material' && (
-                    <>
-                      <div className="space-y-2">
-                        <Label>حجم/وزن بسته‌بندی</Label>
-                        <Input value={form.typeFields.packSize || ''} onChange={e => setTypeField('packSize', e.target.value)} placeholder="مثلاً ۵۰ گرم، ۵ میلی‌لیتر" />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>نوع کیورینگ</Label>
-                        <Select value={form.typeFields.curingType || ''} onValueChange={v => setTypeField('curingType', v)}>
-                          <SelectTrigger><SelectValue placeholder="انتخاب نوع کیورینگ" /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="light">نوری</SelectItem>
-                            <SelectItem value="self">خودسخت‌شونده</SelectItem>
-                            <SelectItem value="dual">دوال‌کیور</SelectItem>
-                            <SelectItem value="none">ندارد</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>تاریخ انقضا (اختیاری)</Label>
-                        <Input type="date" value={form.typeFields.expiryDate || ''} onChange={e => setTypeField('expiryDate', e.target.value)} dir="ltr" />
-                      </div>
-                    </>
-                  )}
-                  {form.productType === 'tool' && (
-                    <>
-                      <div className="space-y-2">
-                        <Label>جنس</Label>
-                        <Select value={form.typeFields.material || ''} onValueChange={v => setTypeField('material', v)}>
-                          <SelectTrigger><SelectValue placeholder="انتخاب جنس" /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="stainless">استیل ضدزنگ</SelectItem>
-                            <SelectItem value="titanium">تیتانیوم</SelectItem>
-                            <SelectItem value="plastic">پلاستیک</SelectItem>
-                            <SelectItem value="other">سایر</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2 md:col-span-2">
-                        <Label>محتویات بسته</Label>
-                        <Input value={form.typeFields.packageContents || ''} onChange={e => setTypeField('packageContents', e.target.value)} placeholder="مثلاً ۵ عدد میرور، ۳ عدد پروب" />
-                      </div>
-                    </>
-                  )}
-                  {form.productType === 'consumable' && (
-                    <>
-                      <div className="space-y-2">
-                        <Label>سایز</Label>
-                        <Input value={form.typeFields.size || ''} onChange={e => setTypeField('size', e.target.value)} placeholder="مثلاً ۲۵mm، میانه" />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>جنس</Label>
-                        <Input value={form.typeFields.material || ''} onChange={e => setTypeField('material', e.target.value)} placeholder="مثلاً نایلون، لاتکس" />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>تعداد در بسته</Label>
-                        <Input type="number" min="0" value={form.typeFields.perPack || ''} onChange={e => setTypeField('perPack', e.target.value)} placeholder="مثلاً ۱۰۰" dir="ltr" />
-                      </div>
-                    </>
-                  )}
-                </div>
-                <p className="text-[11px] text-muted-foreground mt-2">تمام فیلدهای این بخش اختیاری هستند.</p>
-              </div>
-            )}
-
-            {/* ─── Super-Prompt Section ─── */}
-            <div className="md:col-span-2 mt-2">
-              <Separator className="mb-4" />
-              <div className="rounded-xl border-2 border-dashed border-[#2FC4C9]/30 bg-[#2FC4C9]/5 p-4 space-y-3">
-                <div className="flex items-center gap-2 text-[#16233F] font-semibold text-sm">
-                  <FileText className="w-4 h-4 text-[#2FC4C9]" />
-                  📋 خروجی سوپرپرامپت
-                </div>
-                <Textarea
-                  value={superPromptText}
-                  onChange={e => setSuperPromptText(e.target.value)}
-                  placeholder="متن خروجی AI را اینجا قرار دهید..."
-                  rows={6}
-                  className="text-sm resize-y"
-                />
-                <Button
-                  type="button"
-                  onClick={handleParseSuperPrompt}
-                  disabled={parsing || !superPromptText.trim()}
-                  className="w-full bg-[#2FC4C9] hover:bg-[#2FC4C9]/90 text-white"
-                >
-                  {parsing ? (
-                    <Loader2 className="w-4 h-4 ml-2 animate-spin" />
-                  ) : (
-                    <Wand2 className="w-4 h-4 ml-2" />
-                  )}
-                  تحلیل و پر کردن خودکار 🪄
-                </Button>
-              </div>
-            </div>
-
-            {/* ─── Parsed Fields: Strengths ─── */}
-            <div className="md:col-span-2 space-y-2">
-              <Label className="flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                نقاط قوت
-              </Label>
-              {form.strengths.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {form.strengths.map((s, idx) => (
-                    <Badge key={idx} variant="secondary" className="bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 pr-1 pl-2 py-1.5 gap-1">
-                      <span className="text-xs">{s}</span>
-                      <button onClick={() => removeStrength(idx)} className="mr-1 hover:text-red-500 transition-colors">
-                        <X className="w-3 h-3" />
-                      </button>
-                    </Badge>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground">هنوز نقطه‌ای اضافه نشده — از سوپرپرامپت استفاده کنید</p>
-              )}
-            </div>
-
-            {/* ─── Parsed Fields: Weaknesses ─── */}
-            <div className="md:col-span-2 space-y-2">
-              <Label className="flex items-center gap-1.5">
-                <AlertTriangle className="w-4 h-4 text-amber-600" />
-                نقاط ضعف
-              </Label>
-              {form.weaknesses.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {form.weaknesses.map((w, idx) => (
-                    <Badge key={idx} variant="secondary" className="bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100 pr-1 pl-2 py-1.5 gap-1">
-                      <span className="text-xs">{w}</span>
-                      <button onClick={() => removeWeakness(idx)} className="mr-1 hover:text-red-500 transition-colors">
-                        <X className="w-3 h-3" />
-                      </button>
-                    </Badge>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground">هنوز نقطه‌ای اضافه نشده — از سوپرپرامپت استفاده کنید</p>
-              )}
-            </div>
-
-            {/* ─── Parsed Fields: Description ─── */}
-            <div className="md:col-span-2 space-y-2">
-              <Label>توضیحات</Label>
-              <Textarea
-                value={form.description}
-                onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                placeholder="توضیحات کامل محصول..."
-                rows={4}
-                className="text-sm"
-              />
-            </div>
-
-            {/* ─── Custom Specs ─── */}
-            <div className="md:col-span-2 mt-1">
-              <Separator className="mb-3" />
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">ویژگی‌های سفارشی</p>
-                <Button type="button" size="sm" variant="outline" onClick={addCustomSpec}>
-                  <Plus className="w-4 h-4 ml-1" /> افزودن ویژگی جدید
-                </Button>
-              </div>
-              {form.customSpecs.length === 0 ? (
-                <p className="text-xs text-muted-foreground">هنوز ویژگی سفارشی اضافه نشده — این بخش کاملاً اختیاری است.</p>
-              ) : (
-                <div className="space-y-2">
-                  {form.customSpecs.map((spec, idx) => (
-                    <div key={idx} className="flex items-center gap-2">
-                      <Input
-                        value={spec.label}
-                        onChange={e => updateCustomSpec(idx, 'label', e.target.value)}
-                        placeholder="نام ویژگی"
-                        className="flex-1"
-                      />
-                      <Input
-                        value={spec.value}
-                        onChange={e => updateCustomSpec(idx, 'value', e.target.value)}
-                        placeholder="مقدار"
-                        className="flex-1"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => removeCustomSpec(idx)}
-                        className="p-2 rounded-md hover:bg-red-50 text-red-500 transition-colors shrink-0"
-                        aria-label="حذف ویژگی"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* ─── SEO Fields ─── */}
-            <div className="md:col-span-2 mt-1">
-              <Separator className="mb-3" />
-              <p className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wide">تنظیمات سئو</p>
-            </div>
-            <div className="space-y-2">
-              <Label>Meta Title</Label>
-              <Input
-                value={form.metaTitle}
-                onChange={e => setForm(f => ({ ...f, metaTitle: e.target.value }))}
-                placeholder="عنوان سئو (خودکار تولید می‌شود)"
-                className="text-sm"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>کلمات کلیدی</Label>
-              <Input
-                value={form.keywords}
-                onChange={e => setForm(f => ({ ...f, keywords: e.target.value }))}
-                placeholder="دندانپزشکی، مرصادنت، ..."
-                className="text-sm"
-              />
-            </div>
-            <div className="space-y-2 md:col-span-2">
-              <Label>Meta Description</Label>
-              <Textarea
-                value={form.metaDescription}
-                onChange={e => setForm(f => ({ ...f, metaDescription: e.target.value }))}
-                placeholder="توضیحات متا (حداکثر ۱۵۰ کاراکتر)"
-                rows={2}
-                className="text-sm"
-              />
-              {form.metaDescription.length > 160 && (
-                <p className="text-xs text-amber-600">طول توضیحات متا بیشتر از ۱۶۰ کاراکتر است ({form.metaDescription.length})</p>
-              )}
-            </div>
-          </div>
-          <div className="flex justify-end gap-3 mt-6">
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>انصراف</Button>
-            <Button onClick={handleSave} disabled={saving} className="bg-[#16233F] hover:bg-[#1e2d4d]">
-              {saving && <Loader2 className="w-4 h-4 ml-2 animate-spin" />}
-              {editing ? 'بروزرسانی' : 'ایجاد محصول'}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
       {/* Delete Confirmation */}
       <AlertDialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
         <AlertDialogContent dir="rtl">
@@ -985,45 +855,7 @@ export function AdminProducts({ token }: { token: string }) {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Image Gallery Dialog */}
-      <Dialog open={!!imageProduct} onOpenChange={() => setImageProduct(null)}>
-        <DialogContent className="max-w-3xl" dir="rtl">
-          <DialogHeader>
-            <DialogTitle>تصاویر محصول: {imageProduct?.name}</DialogTitle>
-            <DialogDescription>مدیریت گالری تصاویر</DialogDescription>
-          </DialogHeader>
-          <div className="mt-4">
-            <div className="flex items-center gap-3 mb-4">
-              <label className="cursor-pointer">
-                <input type="file" accept="image/*" className="hidden" onChange={handleUpload} />
-                <Button variant="outline" asChild disabled={uploading}>
-                  <span>
-                    {uploading ? <Loader2 className="w-4 h-4 ml-2 animate-spin" /> : <Upload className="w-4 h-4 ml-2" />}
-                    آپلود تصویر
-                  </span>
-                </Button>
-              </label>
-            </div>
-            {images.length === 0 ? (
-              <p className="text-center text-muted-foreground py-12">تصویری وجود ندارد</p>
-            ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                {images.map(img => (
-                  <div key={img.id} className="relative group rounded-lg overflow-hidden border bg-gray-50">
-                    <img src={img.url} alt={img.alt || ''} className="w-full h-32 object-cover" />
-                    <button
-                      onClick={() => handleDeleteImage(img.id)}
-                      className="absolute top-1 left-1 w-7 h-7 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      
     </div>
   );
 }

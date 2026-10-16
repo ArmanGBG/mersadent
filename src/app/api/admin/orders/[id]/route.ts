@@ -41,31 +41,90 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { status } = body;
+    const { status, paymentStatus } = body;
 
     const validStatuses = ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled'];
-    if (!status || !validStatuses.includes(status)) {
-      return NextResponse.json(
-        { error: 'وضعیت نامعتبر است. مقادیر مجاز: pending, confirmed, shipped, delivered, cancelled' },
-        { status: 400 }
-      );
+    const validPaymentStatuses = ['pending', 'paid', 'cod_pending', 'failed'];
+
+    const updateData: any = {};
+
+    if (status) {
+      if (!validStatuses.includes(status)) {
+        return NextResponse.json(
+          { error: 'وضعیت ارسال نامعتبر است' },
+          { status: 400 }
+        );
+      }
+      updateData.status = status;
+    }
+
+    if (paymentStatus) {
+      if (!validPaymentStatuses.includes(paymentStatus)) {
+        return NextResponse.json(
+          { error: 'وضعیت پرداخت نامعتبر است' },
+          { status: 400 }
+        );
+      }
+      updateData.paymentStatus = paymentStatus;
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json({ error: 'هیچ فیلدی برای بروزرسانی ارسال نشده' }, { status: 400 });
     }
 
     const order = await db.order.findUnique({
       where: { id: parseInt(id) },
+      include: { items: true },
     });
 
     if (!order) {
       return NextResponse.json({ error: 'سفارش یافت نشد' }, { status: 404 });
     }
 
-    const updatedOrder = await db.order.update({
-      where: { id: parseInt(id) },
-      data: { status },
-      include: { items: true },
+    const updatedOrder = await db.$transaction(async (tx) => {
+      const updated = await tx.order.update({
+        where: { id: parseInt(id) },
+        data: updateData,
+        include: { items: true, user: { select: { id: true, name: true, phone: true, email: true } } },
+      });
+
+      // Restore stock if newly cancelled
+      if (order.status !== 'cancelled' && status === 'cancelled') {
+        for (const item of order.items) {
+          await tx.product.update({
+            where: { id: item.productId },
+            data: {
+              stockQuantity: { increment: item.quantity },
+              availability: 'in_stock'
+            }
+          });
+        }
+      }
+
+      // Re-deduct stock if un-cancelled
+      if (order.status === 'cancelled' && status && status !== 'cancelled') {
+        for (const item of order.items) {
+          const productInfo = await tx.product.findUnique({ where: { id: item.productId } });
+          if (productInfo) {
+            const newStock = productInfo.stockQuantity - item.quantity;
+            await tx.product.update({
+              where: { id: item.productId },
+              data: {
+                stockQuantity: newStock,
+                availability: newStock <= 0 ? 'out_of_stock' : productInfo.availability
+              }
+            });
+          }
+        }
+      }
+
+      return updated;
     });
 
-    await logActivity('order.update', `سفارش #${order.orderNumber} به وضعیت "${status}" تغییر کرد`);
+    const logParts: string[] = [];
+    if (status) logParts.push(`وضعیت ارسال: «${status}»`);
+    if (paymentStatus) logParts.push(`وضعیت پرداخت: «${paymentStatus}»`);
+    await logActivity('order.update', `سفارش #${order.orderNumber} — ${logParts.join('، ')}`);
 
     return NextResponse.json({ order: updatedOrder });
   } catch (error) {

@@ -47,6 +47,7 @@ model Product {
   price           Int?
   priceType       String   @default("fixed") // "fixed" | "call"
   availability    String   @default("in_stock") // "in_stock" | "out_of_stock" (varchar, not a number)
+  stockQuantity   Int      @default(0) // Inventory count
   specs           String?  // JSON: Record<string, string> dynamic key-value specs
   discountPercent Float    @default(0) // 0-100
   description     String?  // Full product description (HTML)
@@ -100,9 +101,10 @@ model User {
   phone         String?   @unique
   email         String?   @unique
   name          String?
-  googleId      String?   @unique
   avatar        String?
+  userType      String?   // Student, Dentist, etc.
   isAdmin       Boolean   @default(false)
+  isActive      Boolean   @default(true) // For banning/suspending users
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   addresses     Address[]
@@ -113,12 +115,15 @@ model User {
 model OTP {
   id         Int       @id @default(autoincrement())
   phone      String
-  code       String
+  purpose    String    @default("LOGIN")
+  codeHash   String
   expiresAt  DateTime
-  verifiedAt DateTime?
+  attempts   Int       @default(0)
+  consumedAt DateTime?
   createdAt  DateTime  @default(now())
 
-  @@index([phone])
+  @@index([phone, purpose])
+  @@index([consumedAt])
 }
 
 model Address {
@@ -162,6 +167,7 @@ model Order {
   user           User     @relation(fields: [userId], references: [id])
   status         String   @default("pending") // pending, confirmed, shipped, delivered, cancelled
   totalPrice     Int      // Total in toman
+  shippingCost   Int      @default(0) // Shipping cost in toman
   paymentMethod  String?  // "online", "cod"
   paymentRef     String?  // Transaction reference
   paymentStatus  String   @default("pending") // pending, paid, failed

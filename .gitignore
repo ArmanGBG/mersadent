@@ -32,6 +32,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -56,3 +57,19 @@ server.log
 # User-uploaded media (stored on local disk / Liara Persistent Disk at runtime).
 # Do not commit uploaded images to git — they are runtime data, not source code.
 /public/uploads/
+
+# Scratch scripts & temporary test files
+*.py
+*.sh
+*.bak
+test_*.js
+test_*.ts
+get_cats.ts
+cats.json
+categories_diagram.md
+otpguide.md
+task.md
+
+# Local database and image backups
+/backup/
+/backups/

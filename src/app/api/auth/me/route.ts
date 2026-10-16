@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
   try {
     const user = await db.user.findUnique({
       where: { id: payload.userId },
-      select: { id: true, name: true, phone: true, email: true, avatar: true, createdAt: true },
+      select: { id: true, name: true, phone: true, email: true, userType: true, avatar: true, createdAt: true },
     });
 
     if (!user) {

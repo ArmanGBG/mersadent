@@ -1,45 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { canonicalizePhone, phoneVariants, verifyOtp } from '@/lib/otp';
 import { signUserToken } from '@/lib/user-auth';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { phone, code } = body;
+    const phone = canonicalizePhone(typeof body.phone === 'string' ? body.phone : '');
+    const { code } = body;
+    const purpose = body.purpose === 'SIGNUP' ? 'SIGNUP' : 'LOGIN';
 
-    if (!phone || !code) {
+    if (!/^\+989\d{9}$/.test(phone) || !/^\d{6}$/.test(String(code || ''))) {
       return NextResponse.json({ success: false, error: 'شماره موبایل و کد تأیید الزامی است' }, { status: 400 });
     }
 
-    // Atomically verify and mark OTP in a single updateMany to prevent double-use
-    const { count } = await db.oTP.updateMany({
-      where: {
-        phone,
-        code,
-        verifiedAt: null,
-        expiresAt: { gt: new Date() },
-      },
-      data: { verifiedAt: new Date() },
-    });
+    const isValid = await verifyOtp(phone, purpose, code);
 
-    if (count === 0) {
+    if (!isValid) {
       return NextResponse.json({ success: false, error: 'کد تأیید منقضی شده یا یافت نشد' }, { status: 401 });
     }
 
-    // Find or create user by phone
-    let user = await db.user.findUnique({
-      where: { phone },
-    });
+    const user = await db.user.findFirst({ where: { phone: { in: phoneVariants(phone) } } });
 
-    if (!user) {
-      // Check if phone is already taken by a Google user
-      // (shouldn't happen since phone is unique, but handle gracefully)
-      user = await db.user.create({
-        data: { phone },
-      });
-    }
+    if (!user) return NextResponse.json({ success: false, error: 'کاربری با این شماره ثبت‌نام نکرده است' }, { status: 404 });
 
-    // Generate session token
     const token = signUserToken(user.id);
 
     return NextResponse.json({

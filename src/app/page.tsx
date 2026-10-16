@@ -61,9 +61,10 @@ import { toast, Toaster } from 'sonner';
 import {
   AdminLogin, AdminLayout, AdminDashboard, AdminProducts,
   AdminCategories, AdminBrands, AdminBlog, AdminBlogCategories, AdminSettings,
-  AdminOrders,
+  AdminOrders, AdminUsers,
 } from '@/components/admin';
-import { CompareProvider, CompareFloatingBar, CompareView, useCompare } from '@/components/compare';
+import { CompareView, useCompare } from '@/components/compare';
+import { ProductCard } from '@/components/product/ProductCard';
 
 // ============================================================
 // TYPES
@@ -182,6 +183,7 @@ interface UserData {
   phone: string | null;
   email: string | null;
   avatar: string | null;
+  userType?: string | null;
 }
 
 type PageView =
@@ -200,6 +202,134 @@ type PageView =
   | { type: 'user'; tab?: string }
   | { type: 'order-detail'; orderId: number }
   | { type: 'compare' };
+
+// ============================================================
+// URL & ROUTING HELPERS
+// ============================================================
+function viewToUrl(view: PageView): string {
+  switch (view.type) {
+    case 'home':
+      return '/';
+    case 'product':
+      return `/?product=${view.productId}`;
+    case 'category': {
+      const p = new URLSearchParams();
+      p.set('category', view.slug);
+      if (view.categoryId) p.set('cid', String(view.categoryId));
+      if (view.parentName) p.set('pname', view.parentName);
+      if (view.parentSlug) p.set('pslug', view.parentSlug);
+      return `/?${p.toString()}`;
+    }
+    case 'brand': {
+      const p = new URLSearchParams();
+      p.set('brand', view.brandName);
+      if (view.brandId !== undefined) p.set('bid', String(view.brandId));
+      return `/?${p.toString()}`;
+    }
+    case 'search':
+      return `/?q=${encodeURIComponent(view.query)}`;
+    case 'about':
+      return '/?view=about';
+    case 'blog':
+      return view.categorySlug ? `/?view=blog&cat=${encodeURIComponent(view.categorySlug)}` : '/?view=blog';
+    case 'blogPost':
+      return `/?post=${encodeURIComponent(view.slug)}`;
+    case 'cart':
+      return '/?view=cart';
+    case 'checkout':
+      return '/?view=checkout';
+    case 'user':
+      return view.tab ? `/?view=user&tab=${encodeURIComponent(view.tab)}` : '/?view=user';
+    case 'order-detail':
+      return `/?view=order&id=${view.orderId}`;
+    case 'compare':
+      return '/?view=compare';
+    case 'adminLogin':
+      return '/#admin';
+    case 'admin':
+      return view.section ? `/?view=admin&section=${encodeURIComponent(view.section)}` : '/?view=admin';
+    default:
+      return '/';
+  }
+}
+
+function urlToView(searchStr: string, hashStr: string): PageView {
+  const hash = (hashStr || '').replace(/^#/, '').toLowerCase();
+  if (hash === 'admin') {
+    return { type: 'adminLogin' };
+  }
+
+  const params = new URLSearchParams(searchStr || '');
+
+  // 1. Product
+  const productId = params.get('product');
+  if (productId && !isNaN(Number(productId))) {
+    return { type: 'product', productId: Number(productId) };
+  }
+
+  // 2. Category
+  const categorySlug = params.get('category');
+  if (categorySlug) {
+    const categoryId = Number(params.get('cid')) || 0;
+    return {
+      type: 'category',
+      categoryId,
+      slug: categorySlug,
+      parentName: params.get('pname') || undefined,
+      parentSlug: params.get('pslug') || undefined,
+    };
+  }
+
+  // 3. Brand
+  const brandName = params.get('brand');
+  if (brandName) {
+    const brandId = Number(params.get('bid')) || 0;
+    return { type: 'brand', brandId, brandName };
+  }
+
+  // 4. Search
+  const query = params.get('q');
+  if (query) {
+    return { type: 'search', query };
+  }
+
+  // 5. Blog post
+  const postSlug = params.get('post');
+  if (postSlug) {
+    return { type: 'blogPost', slug: postSlug };
+  }
+
+  // 6. Generic views via ?view=...
+  const viewType = params.get('view');
+  if (viewType === 'about') return { type: 'about' };
+  if (viewType === 'cart') return { type: 'cart' };
+  if (viewType === 'checkout') return { type: 'checkout' };
+  if (viewType === 'compare') return { type: 'compare' };
+  if (viewType === 'blog') {
+    const cat = params.get('cat') || undefined;
+    return { type: 'blog', categorySlug: cat };
+  }
+  if (viewType === 'user') {
+    const tab = params.get('tab') || undefined;
+    return { type: 'user', tab };
+  }
+  if (viewType === 'order') {
+    const orderId = Number(params.get('id'));
+    if (orderId && !isNaN(orderId)) {
+      return { type: 'order-detail', orderId };
+    }
+    return { type: 'user', tab: 'orders' };
+  }
+  if (viewType === 'admin') {
+    const section = params.get('section') || 'dashboard';
+    return { type: 'admin', section };
+  }
+  if (viewType === 'admin-login') {
+    return { type: 'adminLogin' };
+  }
+
+  return { type: 'home' };
+}
 
 // ============================================================
 // HELPERS
@@ -261,122 +391,8 @@ const staggerItem = {
 };
 
 // ============================================================
-// PRODUCT CARD
+// PRODUCT CARD is imported from @/components/product/ProductCard
 // ============================================================
-function ProductCard({ product, onClick, user, onAuthRequired, onAddToCart, onToggleCompare, isInCompare }: { product: Product; onClick: () => void; user: UserData | null; onAuthRequired: () => void; onAddToCart: (productId: number) => void; onToggleCompare: () => void; isInCompare: boolean }) {
-  const av = availabilityLabel(product.availability);
-  const hasDiscount = product.discountPercent > 0 && product.price !== null && product.priceType !== 'call';
-  const discountedPrice = hasDiscount ? Math.round(product.price! * (1 - product.discountPercent / 100)) : null;
-  const canAdd = product.availability === 'in_stock' && product.price !== null && product.priceType !== 'call';
-  const [adding, setAdding] = useState(false);
-
-  const handleAddToCart = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!user) { onAuthRequired(); return; }
-    if (adding) return;
-    setAdding(true);
-    await onAddToCart(product.id);
-    setAdding(false);
-  };
-
-  return (
-    <motion.div whileHover={{ y: -4 }} transition={{ type: 'spring', stiffness: 300, damping: 20 }}>
-      <Card
-        className="cursor-pointer group h-full border border-gray-100 hover:border-mersadent-accent/40 hover:shadow-lg transition-all duration-300 overflow-hidden"
-        onClick={onClick}
-      >
-        <CardContent className="p-3 flex flex-col gap-2">
-          {/* Image or placeholder */}
-          <div className="relative w-full aspect-square bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg flex items-center justify-center group-hover:from-mersadent-accent/5 group-hover:to-mersadent-accent/10 transition-colors overflow-hidden">
-            {product.images && product.images.length > 0 ? (
-              <img
-                src={product.images[0].url}
-                alt={product.images[0].alt || product.name}
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                loading="lazy"
-              />
-            ) : (
-              <Package className="w-10 h-10 text-gray-300 group-hover:text-mersadent-accent/50 transition-colors" />
-            )}
-            {/* Top badges: featured + discount */}
-            <div className="absolute top-1.5 left-1.5 flex flex-col gap-1">
-              {hasDiscount && (
-                <Badge className="bg-red-500 text-white text-[9px] px-1.5 py-0">
-                  تخفیف {product.discountPercent}%
-                </Badge>
-              )}
-              {product.featured && (
-                <Badge className="bg-amber-500 text-white text-[9px] px-1 py-0">
-                  <Star className="w-2.5 h-2.5 ml-0.5" />
-                  ویژه
-                </Badge>
-              )}
-            </div>
-            {/* Compare toggle button */}
-            <button
-              onClick={(e) => { e.stopPropagation(); onToggleCompare(); }}
-              className={`absolute bottom-1.5 left-1.5 w-7 h-7 rounded-full flex items-center justify-center transition-all duration-200 z-10 ${isInCompare ? 'bg-teal-500 text-white shadow-md opacity-100' : 'bg-white/90 text-gray-400 hover:text-teal-500 hover:bg-white shadow-sm opacity-80 group-hover:opacity-100'}`}
-              title={isInCompare ? 'حذف از لیست مقایسه' : 'افزودن به لیست مقایسه'}
-              aria-label={isInCompare ? 'حذف از مقایسه' : 'افزودن به مقایسه'}
-              aria-pressed={isInCompare}
-            >
-              <GitCompareArrows className="w-3.5 h-3.5" />
-            </button>
-            {/* Add to cart button */}
-            {canAdd && (
-              <button
-                onClick={handleAddToCart}
-                disabled={adding}
-                className="absolute bottom-1.5 left-9 w-7 h-7 bg-white/90 hover:bg-mersadent-accent text-mersadent-dark hover:text-white rounded-full flex items-center justify-center shadow-md opacity-0 group-hover:opacity-100 transition-all duration-200 disabled:opacity-60"
-                title="افزودن به سبد خرید"
-              >
-                {adding ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShoppingCart className="w-3.5 h-3.5" />}
-              </button>
-            )}
-            {product.availability === 'out_of_stock' && (
-              <div className="absolute inset-0 bg-white/70 rounded-lg flex items-center justify-center">
-                <Badge variant="secondary" className="text-red-500 text-xs">ناموجود</Badge>
-              </div>
-            )}
-          </div>
-
-          {/* Info */}
-          <div className="flex-1 flex flex-col gap-1 min-h-0">
-            <span className="text-[10px] text-gray-400 font-medium">{product.brand.name}</span>
-            <h3 className="text-xs font-semibold text-mersadent-dark leading-5 line-clamp-2">
-              {product.name}
-            </h3>
-          </div>
-
-          {/* Price & availability */}
-          <div className="flex flex-col gap-1 pt-1.5 border-t border-gray-100">
-            {product.priceType === 'call' || product.price === null ? (
-              <Badge className="w-fit bg-mersadent-accent/10 text-mersadent-accent border-mersadent-accent/20 text-xs font-medium">
-                تماس بگیرید
-              </Badge>
-            ) : hasDiscount && discountedPrice !== null ? (
-              <div className="flex flex-col gap-0.5">
-                <span className="text-[11px] text-gray-400 line-through">
-                  {formatPrice(product.price)}
-                </span>
-                <span className="text-sm font-bold text-red-600">
-                  {formatPrice(discountedPrice)}
-                </span>
-              </div>
-            ) : (
-              <span className="text-sm font-bold text-mersadent-dark">
-                {formatPrice(product.price)}
-              </span>
-            )}
-            <span className={`text-[11px] px-2 py-0.5 rounded-full w-fit ${av.color}`}>
-              {av.text}
-            </span>
-          </div>
-        </CardContent>
-      </Card>
-    </motion.div>
-  );
-}
 
 // ============================================================
 // HEADER
@@ -2291,7 +2307,13 @@ function ProductDetailPage({
       {/* Back button */}
       <Button
         variant="ghost"
-        onClick={() => window.history.length > 1 ? window.history.back() : onNavigate({ type: 'home' })}
+        onClick={() => {
+          if (typeof window !== 'undefined' && window.history.state && window.history.state.depth > 0) {
+            window.history.back();
+          } else {
+            onNavigate({ type: 'home' });
+          }
+        }}
         className="mb-6 gap-1.5 text-sm text-gray-500 hover:text-mersadent-dark"
       >
         <ChevronRight className="w-4 h-4" />
@@ -3924,9 +3946,71 @@ export default function MersadentApp() {
       .catch(() => {});
   }, [currentView]);
 
-  const navigate = useCallback((view: PageView) => {
+  const navigate = useCallback((view: PageView, options?: { replace?: boolean }) => {
+    const url = viewToUrl(view);
+    const prevDepth = typeof window !== 'undefined' && window.history.state && typeof window.history.state.depth === 'number'
+      ? window.history.state.depth
+      : 0;
+    const nextDepth = options?.replace ? prevDepth : prevDepth + 1;
+    const nextState = { view, depth: nextDepth };
+
+    if (typeof window !== 'undefined') {
+      try {
+        if (options?.replace) {
+          window.history.replaceState(nextState, '', url);
+        } else {
+          window.history.pushState(nextState, '', url);
+        }
+      } catch {}
+    }
+
     setCurrentView(view);
+    if (view.type === 'search') {
+      setSearchQuery(view.query);
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
+  // Browser History & URL synchronization
+  useEffect(() => {
+    // 1. Initial parse on load (refresh, bookmark, or direct URL entry)
+    const initialView = urlToView(window.location.search, window.location.hash);
+    if (initialView.type !== 'home') {
+      queueMicrotask(() => {
+        setCurrentView(initialView);
+        if (initialView.type === 'search') {
+          setSearchQuery(initialView.query);
+        }
+      });
+    }
+
+    // Set initial history state if not already initialized
+    if (!window.history.state || typeof window.history.state.depth !== 'number') {
+      try {
+        window.history.replaceState({ view: initialView, depth: 0 }, '', window.location.href);
+      } catch {}
+    }
+
+    // 2. Handle back / forward browser navigation
+    const handlePopState = (e: PopStateEvent) => {
+      if (e.state && e.state.view) {
+        setCurrentView(e.state.view);
+        if (e.state.view.type === 'search') {
+          setSearchQuery(e.state.view.query);
+        }
+      } else {
+        const parsed = urlToView(window.location.search, window.location.hash);
+        setCurrentView(parsed);
+        if (parsed.type === 'search') {
+          setSearchQuery(parsed.query);
+        }
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
   }, []);
 
   // Hidden admin access — no visible button in the footer.
@@ -3943,7 +4027,8 @@ export default function MersadentApp() {
         // Clear the hash so a refresh doesn't keep dropping the visitor
         // straight back into the admin login screen.
         try {
-          history.replaceState(null, '', window.location.pathname + window.location.search);
+          const depth = (window.history.state?.depth || 0) + 1;
+          window.history.replaceState({ view: { type: 'adminLogin' }, depth }, '', window.location.pathname + window.location.search);
         } catch {}
       }
     };
@@ -3972,13 +4057,13 @@ export default function MersadentApp() {
 
   const handleAdminLogin = (token: string) => {
     setAdminToken(token);
-    setCurrentView({ type: 'admin', section: 'dashboard' });
+    navigate({ type: 'admin', section: 'dashboard' });
   };
 
   const handleAdminLogout = () => {
     localStorage.removeItem('admin_token');
     setAdminToken(null);
-    setCurrentView({ type: 'home' });
+    navigate({ type: 'home' });
   };
 
   const renderAdminContent = (section: string) => {
@@ -3990,6 +4075,7 @@ export default function MersadentApp() {
       case 'blog': return <AdminBlog token={adminToken} />;
       case 'blog-categories': return <AdminBlogCategories token={adminToken} />;
       case 'orders': return <AdminOrders token={adminToken} />;
+      case 'users': return <AdminUsers token={adminToken} />;
       case 'settings': return <AdminSettings token={adminToken} />;
       default: return <AdminDashboard token={adminToken} />;
     }
@@ -4024,7 +4110,7 @@ export default function MersadentApp() {
       case 'product':
         return <ProductDetailPage view={currentView} onNavigate={navigate} user={user} onAuthRequired={() => setAuthModalOpen(true)} onAddToCart={handleAddToCart} />;
       case 'search':
-        return <SearchResultsPage query={searchQuery} onNavigate={navigate} user={user} onAuthRequired={() => setAuthModalOpen(true)} onAddToCart={handleAddToCart} />;
+        return <SearchResultsPage query={currentView.query || searchQuery} onNavigate={navigate} user={user} onAuthRequired={() => setAuthModalOpen(true)} onAddToCart={handleAddToCart} />;
       case 'about':
         return <AboutPage onNavigate={navigate} />;
       case 'blog':
@@ -4060,25 +4146,13 @@ export default function MersadentApp() {
   }
 
   return (
-    <CompareProvider>
-      <div className="min-h-screen flex flex-col bg-mersadent-bg">
-        <Header
-          onNavigate={navigate}
-          onSearch={handleSearch}
-          categories={categories}
-          user={user}
-          cartCount={cartCount}
-          onAuthRequired={() => setAuthModalOpen(true)}
-          onLogout={handleUserLogout}
-          onOpenCart={() => setCartSidebarOpen(true)}
-        />
-        <main className="flex-1 min-w-0 overflow-x-clip py-6 sm:py-8">
+    
+      <div className="bg-mersadent-bg">
+        <main className="min-w-0 overflow-x-clip py-6 sm:py-8">
           <AnimatePresence mode="wait">
             {renderView()}
           </AnimatePresence>
         </main>
-        <Footer onNavigate={navigate} />
-        <Toaster position="top-center" richColors closeButton />
 
         {/* Auth Modal */}
         <AuthModal
@@ -4097,23 +4171,8 @@ export default function MersadentApp() {
           onViewCart={() => { setCartSidebarOpen(false); navigate({ type: 'cart' }); }}
         />
 
-        {/* Compare floating bar (hidden on the compare view itself) */}
-        {currentView.type !== 'compare' && (
-          <CompareFloatingBar onGoToCompare={() => navigate({ type: 'compare' })} />
-        )}
-
-        {/* Mobile bottom tab bar (fixed) + spacer so the footer isn't covered */}
-        <div className="md:hidden h-16" aria-hidden="true" />
-        <MobileBottomNav
-          currentView={currentView}
-          user={user}
-          cartCount={cartCount}
-          onNavigate={navigate}
-          onSearch={handleSearch}
-          onOpenCart={() => setCartSidebarOpen(true)}
-          onAuthRequired={() => setAuthModalOpen(true)}
-        />
+        
       </div>
-    </CompareProvider>
+    
   );
 }

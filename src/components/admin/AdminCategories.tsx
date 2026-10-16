@@ -239,19 +239,6 @@ export function AdminCategories({ token }: { token: string }) {
 
   // Expand ONLY the full sub-tree of a single main category (collapses everything else first).
   // Recursively collects all descendant IDs of the chosen root and adds them to `expanded`.
-  const expandSubtree = (rootId: number) => {
-    const ids = new Set<number>();
-    const collect = (node: CategoryNode | undefined | null) => {
-      if (!node) return;
-      if (node.children && node.children.length > 0) {
-        ids.add(node.id);
-        node.children.forEach(collect);
-      }
-    };
-    const root = categories.find(c => c.id === rootId);
-    collect(root);
-    setExpanded(ids);
-  };
 
   // Toggle visibility with cascade handled on the backend
   const toggleVisible = async (c: CategoryNode) => {
@@ -374,7 +361,7 @@ export function AdminCategories({ token }: { token: string }) {
     persistOrder(reordered.map((cc, i) => ({ id: cc.id, order: i, parentId: c.parentId })));
   };
 
-  const parents = flat.filter(c => c.parentId === null);
+  const parents = flat;
 
   // ---- Sortable row ----
   const SortableRow = ({ c, depth }: { c: CategoryNode; depth: number }) => {
@@ -388,7 +375,7 @@ export function AdminCategories({ token }: { token: string }) {
       opacity: isDragging ? 0.4 : 1,
     };
 
-    const hasChildren = (c._count?.children || 0) > 0;
+    const hasChildren = c.children && c.children.length > 0;
     const isVisible = c.visible !== false;
 
     return (
@@ -409,26 +396,31 @@ export function AdminCategories({ token }: { token: string }) {
           >
             <GripVertical className="w-4 h-4" />
           </button>
-          {hasChildren ? (
-            <button onClick={() => toggleExpand(c.id)} className="text-muted-foreground hover:text-foreground">
-              {expanded.has(c.id) ? <ChevronDown className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-            </button>
-          ) : (
-            <span className="w-4" />
-          )}
-          {c.image ? (
-            <img src={c.image} alt={c.name} className="w-6 h-6 rounded-md object-cover flex-shrink-0 border border-gray-200" />
-          ) : (
-            <FolderOpen className={`w-4 h-4 flex-shrink-0 ${isVisible ? 'text-amber-500' : 'text-gray-300'}`} />
-          )}
-          <span className={`font-medium truncate ${!isVisible ? 'text-gray-400 line-through' : ''}`}>{c.name}</span>
-          {!isVisible && (
-            <Badge variant="outline" className="text-[10px] text-gray-400 border-gray-300 bg-gray-50">پنهان</Badge>
-          )}
+          <div
+            onClick={() => hasChildren && toggleExpand(c.id)}
+            className={`flex items-center gap-2 flex-1 min-w-0 ${hasChildren ? 'cursor-pointer hover:text-blue-600 transition-colors' : ''}`}
+          >
+            {hasChildren ? (
+              <span className={`text-muted-foreground ${hasChildren ? 'group-hover:text-blue-600' : ''}`}>
+                {expanded.has(c.id) ? <ChevronDown className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+              </span>
+            ) : (
+              <span className="w-4" />
+            )}
+            {c.image ? (
+              <img src={c.image} alt={c.name} className="w-6 h-6 rounded-md object-cover flex-shrink-0 border border-gray-200" />
+            ) : (
+              <FolderOpen className={`w-4 h-4 flex-shrink-0 ${isVisible ? 'text-amber-500' : 'text-gray-300'}`} />
+            )}
+            <span className={`font-medium truncate ${!isVisible ? 'text-gray-400 line-through' : ''}`}>{c.name}</span>
+            {!isVisible && (
+              <Badge variant="outline" className="text-[10px] text-gray-400 border-gray-300 bg-gray-50">پنهان</Badge>
+            )}
+          </div>
         </div>
         <div className="py-2.5 px-3 text-gray-500 text-xs hidden md:block min-w-[120px]" dir="ltr">{c.slug}</div>
         <div className="py-2.5 px-3 text-center min-w-[60px]">{c.totalProducts ?? c._count?.products ?? 0}</div>
-        <div className="py-2.5 px-3 text-center min-w-[60px]">{c._count?.children || 0}</div>
+        <div className="py-2.5 px-3 text-center min-w-[60px]">{c.children?.length || 0}</div>
         <div className="py-2.5 px-3 flex items-center justify-center min-w-[60px]">
           <Switch
             checked={isVisible}
@@ -498,33 +490,12 @@ export function AdminCategories({ token }: { token: string }) {
       {/* Toolbar */}
       <div className="flex flex-wrap justify-between items-center gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" onClick={expandAll}>
+          <Button variant="secondary" size="sm" onClick={expandAll} className="bg-gray-100 hover:bg-gray-200 text-gray-700">
             <ChevronDown className="w-4 h-4 ml-1" /> باز کردن همه
           </Button>
-          <Button variant="outline" size="sm" onClick={collapseAll}>
+          <Button variant="secondary" size="sm" onClick={collapseAll} className="bg-gray-100 hover:bg-gray-200 text-gray-700">
             <ChevronLeft className="w-4 h-4 ml-1" /> بستن همه
           </Button>
-          {/* Expand only one main category's subtree */}
-          <div className="flex items-center gap-1.5">
-            <ListTree className="w-4 h-4 text-muted-foreground" />
-            <Select
-              value=""
-              onValueChange={(v) => {
-                if (v) expandSubtree(Number(v));
-              }}
-            >
-              <SelectTrigger className="h-8 w-[200px] text-xs" size="sm">
-                <SelectValue placeholder="باز کردن فقط یک دسته..." />
-              </SelectTrigger>
-              <SelectContent dir="rtl">
-                {categories.map(c => (
-                  <SelectItem key={c.id} value={String(c.id)}>
-                    {c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
           {reordering && (
             <span className="text-xs text-muted-foreground flex items-center gap-1">
               <Loader2 className="w-3 h-3 animate-spin" /> در حال ذخیره ترتیب...

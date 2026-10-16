@@ -15,7 +15,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Plus, Pencil, Trash2, Award, Loader2, Upload, X, Eye, EyeOff, ImageIcon } from 'lucide-react';
+import { Plus, Search, Pencil, Trash2, Award, Loader2, Upload, X, Eye, EyeOff, ImageIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { adminFetch, toSlug } from '@/lib/admin-utils';
 
@@ -38,6 +38,7 @@ export function AdminBrands({ token }: { token: string }) {
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Brand | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   // Upload a logo file. Works in BOTH create and edit modes:
   //  - If editing an existing brand, pass brandId so the server persists logo to the DB immediately.
   //  - If creating a new brand, upload without brandId; the server returns a URL which we keep in
@@ -188,10 +189,21 @@ export function AdminBrands({ token }: { token: string }) {
         </div>
       </div>
 
-      <div className="flex justify-end">
-        <Button onClick={openCreate} className="bg-[#16233F] hover:bg-[#1e2d4d]">
-          <Plus className="w-4 h-4 ml-1" /> برند جدید
-        </Button>
+      <div className="flex flex-col sm:flex-row justify-end sm:items-center gap-4">
+        <div className="flex items-center gap-3 w-full sm:w-auto">
+          <div className="relative flex-1 sm:w-64">
+            <Search className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input 
+              placeholder="جستجوی برند (نام یا اسلاگ)..." 
+              className="pr-9 h-9" 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+          <Button onClick={openCreate} className="bg-[#16233F] hover:bg-[#1e2d4d] h-9">
+            <Plus className="w-4 h-4 ml-1" /> برند جدید
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -212,7 +224,7 @@ export function AdminBrands({ token }: { token: string }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {brands.map(b => (
+                  {brands.filter(b => b.name.includes(searchQuery) || b.slug.toLowerCase().includes(searchQuery.toLowerCase())).map(b => (
                     <tr key={b.id} className={`border-b last:border-0 hover:bg-gray-50/50 ${!b.visible ? 'opacity-50' : ''}`}>
                       <td className="py-2.5 px-3">
                         <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden">

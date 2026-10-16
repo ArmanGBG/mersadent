@@ -26,6 +26,7 @@ export async function PUT(request: NextRequest) {
 
     const cartItem = await db.cartItem.findFirst({
       where: { id: parseInt(itemId), cartId: cart.id },
+      include: { product: true },
     });
 
     if (!cartItem) {
@@ -35,9 +36,13 @@ export async function PUT(request: NextRequest) {
     if (quantity <= 0) {
       await db.cartItem.delete({ where: { id: cartItem.id } });
     } else {
+      const parsedQuantity = Math.max(1, parseInt(quantity));
+      if (parsedQuantity > cartItem.product.stockQuantity) {
+        return NextResponse.json({ error: `حداکثر موجودی قابل سفارش ${cartItem.product.stockQuantity} عدد است` }, { status: 400 });
+      }
       await db.cartItem.update({
         where: { id: cartItem.id },
-        data: { quantity: Math.max(1, parseInt(quantity)) },
+        data: { quantity: parsedQuantity },
       });
     }
 

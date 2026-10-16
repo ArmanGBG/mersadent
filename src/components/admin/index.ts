@@ -8,3 +8,4 @@ export { AdminBlog } from './AdminBlog';
 export { AdminBlogCategories } from './AdminBlogCategories';
 export { AdminSettings } from './AdminSettings';
 export { AdminOrders } from './AdminOrders';
+export { AdminUsers } from './AdminUsers';

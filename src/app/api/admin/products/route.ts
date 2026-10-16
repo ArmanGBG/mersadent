@@ -83,13 +83,20 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { name, slug, model, price, priceType, availability, categoryId, brandId, featured, visible, order, discountPercent, description, strengths, weaknesses, metaTitle, metaDescription, keywords, sku, country, warranty, weight, productType, typeFields, customSpecs } = body;
+    const { name, slug, model, price, priceType, availability, stockQuantity, categoryId, brandId, featured, visible, order, discountPercent, description, strengths, weaknesses, metaTitle, metaDescription, keywords, sku, country, warranty, weight, productType, typeFields, customSpecs } = body;
 
     if (!name || !categoryId || !brandId) {
       return NextResponse.json({ error: 'نام، دسته‌بندی و برند الزامی هستند' }, { status: 400 });
     }
 
     const productSlug = slug || toSlug(name);
+    
+    // Auto-update availability based on stockQuantity if provided
+    let finalAvailability = availability || 'in_stock';
+    const parsedStock = stockQuantity !== undefined && stockQuantity !== '' ? parseInt(stockQuantity) : 0;
+    if (parsedStock <= 0) {
+      finalAvailability = 'out_of_stock';
+    }
 
     const product = await db.product.create({
       data: {
@@ -102,7 +109,8 @@ export async function POST(request: NextRequest) {
         weight: weight || null,
         price: price !== null && price !== undefined && price !== '' ? parseInt(price) : null,
         priceType: priceType || 'fixed',
-        availability: availability || 'in_stock',
+        availability: finalAvailability,
+        stockQuantity: parsedStock,
         categoryId: parseInt(categoryId),
         brandId: parseInt(brandId),
         featured: !!featured,
@@ -137,7 +145,7 @@ export async function PUT(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { id, name, slug, model, price, priceType, availability, featured, visible, categoryId, brandId, order, discountPercent, description, strengths, weaknesses, metaTitle, metaDescription, keywords, sku, country, warranty, weight, productType, typeFields, customSpecs } = body;
+    const { id, name, slug, model, price, priceType, availability, stockQuantity, featured, visible, categoryId, brandId, order, discountPercent, description, strengths, weaknesses, metaTitle, metaDescription, keywords, sku, country, warranty, weight, productType, typeFields, customSpecs } = body;
 
     if (!id || !name) {
       return NextResponse.json({ error: 'نام محصول الزامی است' }, { status: 400 });
@@ -153,7 +161,8 @@ export async function PUT(request: NextRequest) {
       weight: weight !== undefined ? (weight || null) : undefined,
       price: price !== null && price !== undefined ? (price === '' ? null : parseInt(price)) : undefined,
       priceType: priceType || 'fixed',
-      availability: availability || 'in_stock',
+      availability: (stockQuantity !== undefined && parseInt(stockQuantity) <= 0) ? 'out_of_stock' : (availability || 'in_stock'),
+      stockQuantity: stockQuantity !== undefined ? (parseInt(stockQuantity) || 0) : undefined,
       featured: !!featured,
       visible: visible !== undefined ? !!visible : undefined,
       order: order ?? undefined,

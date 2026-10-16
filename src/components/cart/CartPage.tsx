@@ -27,6 +27,8 @@ interface CartData {
   id: number;
   items: CartItem[];
   totalPrice: number;
+  shippingCost: number;
+  finalPrice: number;
   itemCount: number;
 }
 
@@ -278,8 +280,19 @@ export function CartPage({ user, onNavigate, onAuthRequired, onCartChange }: Car
                   <span className="font-medium text-mersadent-dark">{cart.itemCount} عدد</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">جمع کل:</span>
-                  <span className="font-bold text-mersadent-dark">{formatPrice(cart.totalPrice)}</span>
+                  <span className="text-gray-500">مبلغ کالاها:</span>
+                  <span className="font-bold text-gray-700">{formatPrice(cart.totalPrice)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">هزینه ارسال:</span>
+                  <span className="font-bold text-gray-700">
+                    {cart.shippingCost === 0 ? <span className="text-green-600">رایگان</span> : formatPrice(cart.shippingCost)}
+                  </span>
+                </div>
+                <Separator />
+                <div className="flex justify-between text-base">
+                  <span className="font-bold text-mersadent-dark">مبلغ قابل پرداخت:</span>
+                  <span className="font-extrabold text-mersadent-accent">{formatPrice(cart.finalPrice)}</span>
                 </div>
                 <Separator />
                 <Button

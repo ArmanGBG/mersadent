@@ -22,8 +22,9 @@ const UPLOADS_ROOT_SEGMENTS = ['public', 'uploads'];
  * Resolve the absolute filesystem path of the `public/uploads` directory.
  * Always computed from `process.cwd()` so it works the same in dev and prod.
  */
+const getCwd = () => process.cwd();
 function uploadsRoot(): string {
-  return path.join(process.cwd(), ...UPLOADS_ROOT_SEGMENTS);
+  return path.join(/*turbopackIgnore: true*/ getCwd(), ...UPLOADS_ROOT_SEGMENTS);
 }
 
 /**
@@ -81,11 +82,11 @@ export async function saveUpload(
   }
 
   const safeFolder = sanitizeFolder(folder);
-  const dir = path.join(uploadsRoot(), safeFolder);
+  const dir = path.join(/*turbopackIgnore: true*/ uploadsRoot(), safeFolder);
   await fs.mkdir(dir, { recursive: true });
 
   const filename = `${randomUUID()}.${ext}`;
-  const fullPath = path.join(dir, filename);
+  const fullPath = `${dir}${path.sep}${filename}`;
   await fs.writeFile(fullPath, data);
 
   // Return public URL path (relative to /public)
@@ -105,11 +106,11 @@ return `/api/uploads/${safeFolder}/${filename}`;
    const safeExt = ext.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
    if (!safeExt) throw new Error(`Invalid extension: "${ext}"`);
    const safeFolder = sanitizeFolder(folder);
-   const dir = path.join(uploadsRoot(), safeFolder);
+   const dir = path.join(/*turbopackIgnore: true*/ uploadsRoot(), safeFolder);
    await fs.mkdir(dir, { recursive: true });
 
    const filename = `${randomUUID()}.${safeExt}`;
-   const fullPath = path.join(dir, filename);
+   const fullPath = `${dir}${path.sep}${filename}`;
    await fs.writeFile(fullPath, data);
 
    return `/api/uploads/${safeFolder}/${filename}`;
@@ -129,11 +130,11 @@ export async function saveSharpOutput(
   const safeExt = ext.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
   if (!safeExt) throw new Error(`Invalid extension: "${ext}"`);
   const safeFolder = sanitizeFolder(folder);
-  const dir = path.join(uploadsRoot(), safeFolder);
+  const dir = path.join(/*turbopackIgnore: true*/ uploadsRoot(), safeFolder);
   await fs.mkdir(dir, { recursive: true });
 
   const filename = `${randomUUID()}.${safeExt}`;
-  const fullPath = path.join(dir, filename);
+  const fullPath = `${dir}${path.sep}${filename}`;
   await writeFn(fullPath);
 
   return `/api/uploads/${safeFolder}/${filename}`;
@@ -157,7 +158,7 @@ function urlToAbsolutePath(urlPath: string): string | null {
   if (!relative) return null;
 
   // Normalize and resolve safely under uploadsRoot()
-  const target = path.resolve(uploadsRoot(), relative);
+  const target = path.resolve(/*turbopackIgnore: true*/ uploadsRoot(), relative);
 
   // Path-traversal guard: ensure the resolved path is still inside uploadsRoot()
   const root = uploadsRoot() + path.sep;

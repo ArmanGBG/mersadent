@@ -63,14 +63,21 @@ export async function GET(request: NextRequest) {
     });
 
     const totalPrice = formattedItems.reduce(
-      (sum, item) => sum + item.priceAtAdd * item.quantity,
+      (sum, item) => sum + (item.currentPrice || 0) * item.quantity,
       0
     );
+
+    const FREE_SHIPPING_THRESHOLD = 5000000;
+    const FLAT_SHIPPING_RATE = 50000;
+    const shippingCost = totalPrice > 0 && totalPrice < FREE_SHIPPING_THRESHOLD ? FLAT_SHIPPING_RATE : 0;
+    const finalPrice = totalPrice + shippingCost;
 
     return NextResponse.json({
       id: cart.id,
       items: formattedItems,
       totalPrice,
+      shippingCost,
+      finalPrice,
       itemCount: formattedItems.reduce((sum, item) => sum + item.quantity, 0),
     });
   } catch (error) {

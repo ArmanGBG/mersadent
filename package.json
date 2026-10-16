@@ -2,9 +2,12 @@
   "name": "nextjs_tailwind_shadcn_ts",
   "version": "0.2.0",
   "private": true,
+  "prisma": {
+    "schema": "prisma/schema.prisma"
+  },
   "scripts": {
     "dev": "env -u DATABASE_URL next dev -p 3000",
-    "build": "prisma generate && next build",
+    "build": "prisma generate --schema=./prisma/schema.prisma && next build",
     "start": "next start -p ${PORT:-3000}",
     "lint": "eslint .",
     "db:push": "env -u DATABASE_URL prisma db push",
@@ -53,6 +56,8 @@
     "@tailwindcss/typography": "^0.5.20",
     "@tanstack/react-query": "^5.82.0",
     "@tanstack/react-table": "^8.21.3",
+    "@types/bcryptjs": "^3.0.0",
+    "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",

@@ -25,6 +25,7 @@ interface SearchableSelectProps {
   className?: string;
   /** RTL aware: align content. Defaults to true. */
   rtl?: boolean;
+  onCreateNew?: (value: string) => void;
 }
 
 /**
@@ -41,7 +42,9 @@ export function SearchableSelect({
   disabled = false,
   className,
   rtl = true,
+  onCreateNew,
 }: SearchableSelectProps) {
+  const [search, setSearch] = React.useState("");
   const [open, setOpen] = React.useState(false);
   const selected = options.find(o => o.value === value);
 
@@ -75,7 +78,7 @@ export function SearchableSelect({
         <Command shouldFilter={true}>
           <div className="flex items-center border-b px-2" dir={rtl ? 'rtl' : 'ltr'}>
             <Search className="size-4 shrink-0 opacity-50" />
-            <CommandInput placeholder={searchPlaceholder} className="h-9 flex-1" />
+            <CommandInput placeholder={searchPlaceholder} className="h-9 flex-1" value={search} onValueChange={setSearch} />
           </div>
           <CommandList className="max-h-60 overflow-y-auto">
             <CommandEmpty className="py-4 text-center text-sm text-muted-foreground">
@@ -105,6 +108,20 @@ export function SearchableSelect({
                 </CommandItem>
               ))}
             </CommandGroup>
+            {onCreateNew && search.trim() !== "" && !options.some(o => o.label === search.trim()) && (
+              <CommandGroup>
+                <CommandItem
+                  onSelect={() => {
+                    onCreateNew(search.trim());
+                    setSearch("");
+                    setOpen(false);
+                  }}
+                  className="gap-2 text-blue-600 bg-blue-50/50"
+                >
+                  <span className="flex-1">+ ایجاد "{search}"</span>
+                </CommandItem>
+              </CommandGroup>
+            )}
           </CommandList>
         </Command>
       </PopoverContent>

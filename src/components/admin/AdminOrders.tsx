@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Search, Package, Eye, Loader2, ChevronLeft, X
+  Search, Package, Eye, Loader2, ChevronLeft, X, Printer
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,8 +31,10 @@ interface AdminOrder {
   orderNumber: string;
   status: string;
   totalPrice: number;
+  shippingCost: number;
   paymentMethod: string | null;
   paymentStatus: string;
+  paymentRef?: string | null;
   shippingName: string | null;
   shippingPhone: string;
   shippingAddress: string;
@@ -179,7 +181,7 @@ export function AdminOrders({ token }: AdminOrdersProps) {
         const data = await res.json();
         setOrderDetail(data.order);
         fetchOrders();
-        toast.success('وضعیت سفارش بروزرسانی شد');
+        toast.success('وضعیت ارسال بروزرسانی شد');
       }
     } catch {
       toast.error('خطا در بروزرسانی وضعیت');
@@ -187,10 +189,32 @@ export function AdminOrders({ token }: AdminOrdersProps) {
     setUpdatingStatus(false);
   };
 
+  const handlePaymentStatusChange = async (newPaymentStatus: string) => {
+    if (!orderDetail) return;
+    setUpdatingStatus(true);
+    try {
+      const res = await fetch(`/api/admin/orders/${orderDetail.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ paymentStatus: newPaymentStatus }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setOrderDetail(data.order);
+        fetchOrders();
+        toast.success('وضعیت پرداخت بروزرسانی شد');
+      }
+    } catch {
+      toast.error('خطا در بروزرسانی وضعیت پرداخت');
+    }
+    setUpdatingStatus(false);
+  };
+
   const totalPages = Math.ceil(total / PER_PAGE);
 
   return (
-    <div dir="rtl">
+    <>
+    <div dir="rtl" className="print:hidden">
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
         <div>
@@ -328,11 +352,24 @@ export function AdminOrders({ token }: AdminOrdersProps) {
       {/* ===== ORDER DETAIL DIALOG ===== */}
       <Dialog open={!!selectedOrder} onOpenChange={(open) => { if (!open) { setSelectedOrder(null); setOrderDetail(null); } }}>
         <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="text-right">جزئیات سفارش</DialogTitle>
-            <DialogDescription className="text-right" dir="ltr">
-              {orderDetail?.orderNumber || selectedOrder?.orderNumber}
-            </DialogDescription>
+          <DialogHeader className="print:hidden">
+            <div className="flex items-center justify-between">
+              <div>
+                <DialogTitle className="text-right">جزئیات سفارش</DialogTitle>
+                <DialogDescription className="text-right mt-1" dir="ltr">
+                  {orderDetail?.orderNumber || selectedOrder?.orderNumber}
+                </DialogDescription>
+              </div>
+              {orderDetail && (
+                <Button variant="outline" size="sm" onClick={() => {
+                  // A small delay ensures any rendering finishes before print dialog
+                  setTimeout(() => window.print(), 100);
+                }}>
+                  <Printer className="w-4 h-4 ml-2" />
+                  چاپ فاکتور
+                </Button>
+              )}
+            </div>
           </DialogHeader>
 
           {detailLoading ? (
@@ -362,10 +399,26 @@ export function AdminOrders({ token }: AdminOrdersProps) {
                 </Select>
               </div>
 
-              {/* Payment Status */}
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-500">وضعیت پرداخت:</span>
-                <span className="font-medium">{paymentStatusLabel(orderDetail.paymentStatus)}</span>
+              {/* Payment Status - Editable */}
+              <div className="flex items-center justify-between bg-gray-50 rounded-xl p-3">
+                <div>
+                  <p className="text-xs text-gray-500">وضعیت پرداخت</p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    روش: {orderDetail.paymentMethod === 'online' ? 'درگاه آنلاین' : orderDetail.paymentMethod === 'cod' ? 'پرداخت در محل' : orderDetail.paymentMethod || '—'}
+                    {orderDetail.paymentRef && <span className="font-mono mr-2">• رهگیری: {orderDetail.paymentRef}</span>}
+                  </p>
+                </div>
+                <Select value={orderDetail.paymentStatus} onValueChange={handlePaymentStatusChange} disabled={updatingStatus}>
+                  <SelectTrigger className="w-40 h-9 text-xs">
+                    {updatingStatus ? <Loader2 className="w-3 h-3 animate-spin" /> : <SelectValue />}
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pending" className="text-xs">در انتظار پرداخت</SelectItem>
+                    <SelectItem value="paid" className="text-xs">پرداخت شده ✓</SelectItem>
+                    <SelectItem value="cod_pending" className="text-xs">پرداخت در محل</SelectItem>
+                    <SelectItem value="failed" className="text-xs">ناموفق</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               <Separator />
@@ -404,8 +457,19 @@ export function AdminOrders({ token }: AdminOrdersProps) {
 
               <Separator />
 
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-bold text-gray-800">جمع کل:</span>
+              <div className="flex items-center justify-between mt-2">
+                <span className="text-sm font-medium text-gray-500">مبلغ کالاها:</span>
+                <span className="text-sm font-bold text-gray-700">{formatPrice(orderDetail.totalPrice - (orderDetail.shippingCost || 0))}</span>
+              </div>
+              <div className="flex items-center justify-between mt-2">
+                <span className="text-sm font-medium text-gray-500">هزینه ارسال:</span>
+                <span className="text-sm font-bold text-gray-700">
+                  {orderDetail.shippingCost ? formatPrice(orderDetail.shippingCost) : <span className="text-green-600">رایگان</span>}
+                </span>
+              </div>
+              
+              <div className="flex items-center justify-between mt-4">
+                <span className="text-sm font-bold text-gray-800">مبلغ قابل پرداخت:</span>
                 <span className="text-base font-extrabold text-[#2FC4C9]">{formatPrice(orderDetail.totalPrice)}</span>
               </div>
             </div>
@@ -415,5 +479,95 @@ export function AdminOrders({ token }: AdminOrdersProps) {
         </DialogContent>
       </Dialog>
     </div>
+
+    {/* ===== PRINTABLE INVOICE ===== */}
+    {orderDetail && (
+      <div className="hidden print:block fixed inset-0 bg-white z-[99999] p-8 text-black" dir="rtl">
+        <style>{`
+          @media print {
+            body * { visibility: hidden; }
+            .print\\:block, .print\\:block * { visibility: visible; }
+            .print\\:block { position: absolute; left: 0; top: 0; width: 100%; height: 100%; padding: 2rem; background: white; }
+          }
+        `}</style>
+        
+        <div className="flex justify-between items-center border-b-2 border-gray-800 pb-6 mb-8">
+          <div>
+            <h1 className="text-3xl font-extrabold text-gray-900 mb-2">فاکتور فروش مرصادنت</h1>
+            <p className="text-gray-600">تأمین‌کننده تخصصی تجهیزات دندانپزشکی</p>
+          </div>
+          <div className="text-left">
+            <p className="font-bold text-gray-800 text-lg" dir="ltr">{orderDetail.orderNumber}</p>
+            <p className="text-sm text-gray-600 mt-1">
+              تاریخ: {new Intl.DateTimeFormat('fa-IR', { year: 'numeric', month: 'long', day: 'numeric' }).format(new Date(orderDetail.createdAt))}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex justify-between mb-8">
+          <div className="w-1/2">
+            <h2 className="text-lg font-bold border-b border-gray-200 pb-2 mb-3">مشخصات خریدار</h2>
+            <ul className="space-y-2 text-sm text-gray-800">
+              <li><span className="text-gray-500 w-16 inline-block">نام:</span> <span className="font-semibold">{orderDetail.shippingName || orderDetail.user?.name || '—'}</span></li>
+              <li><span className="text-gray-500 w-16 inline-block">تلفن:</span> <span dir="ltr" className="font-semibold">{orderDetail.shippingPhone}</span></li>
+              <li><span className="text-gray-500 w-16 inline-block">آدرس:</span> <span className="font-semibold">{orderDetail.shippingAddress}</span></li>
+            </ul>
+          </div>
+          <div className="w-1/3">
+            <h2 className="text-lg font-bold border-b border-gray-200 pb-2 mb-3">وضعیت پرداخت</h2>
+            <ul className="space-y-2 text-sm text-gray-800">
+              <li><span className="text-gray-500 w-24 inline-block">روش:</span> <span className="font-semibold">{orderDetail.paymentMethod === 'online' ? 'درگاه آنلاین' : orderDetail.paymentMethod === 'cod' ? 'پرداخت در محل' : '—'}</span></li>
+              <li><span className="text-gray-500 w-24 inline-block">وضعیت:</span> <span className="font-semibold">{orderDetail.paymentStatus === 'paid' ? 'پرداخت شده' : orderDetail.paymentStatus === 'cod_pending' ? 'پرداخت در محل' : 'در انتظار پرداخت'}</span></li>
+              {orderDetail.paymentRef && <li><span className="text-gray-500 w-24 inline-block">کد رهگیری:</span> <span className="font-mono font-semibold">{orderDetail.paymentRef}</span></li>}
+            </ul>
+          </div>
+        </div>
+
+        <table className="w-full text-sm text-right mb-8">
+          <thead className="bg-gray-100 text-gray-700 font-bold">
+            <tr>
+              <th className="p-3 rounded-r-lg">ردیف</th>
+              <th className="p-3">شرح کالا</th>
+              <th className="p-3 text-center">تعداد</th>
+              <th className="p-3">فی (تومان)</th>
+              <th className="p-3 rounded-l-lg">جمع (تومان)</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {orderDetail.items.map((item: any, idx: number) => (
+              <tr key={item.id}>
+                <td className="p-3 font-medium text-gray-500">{idx + 1}</td>
+                <td className="p-3 font-semibold text-gray-800">{item.productName}</td>
+                <td className="p-3 text-center">{item.quantity}</td>
+                <td className="p-3 text-gray-600">{formatPrice(item.unitPrice)}</td>
+                <td className="p-3 font-bold text-gray-900">{formatPrice(item.totalPrice)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <div className="flex justify-end mb-8">
+          <div className="w-1/3 bg-gray-50 rounded-xl p-4">
+            <div className="flex justify-between text-sm mb-2 text-gray-600">
+              <span>مبلغ کالاها:</span>
+              <span>{formatPrice(orderDetail.totalPrice - (orderDetail.shippingCost || 0))}</span>
+            </div>
+            <div className="flex justify-between text-sm mb-3 text-gray-600">
+              <span>هزینه ارسال:</span>
+              <span>{orderDetail.shippingCost ? formatPrice(orderDetail.shippingCost) : 'رایگان'}</span>
+            </div>
+            <div className="flex justify-between text-lg font-black text-gray-900 border-t border-gray-200 pt-3">
+              <span>جمع کل فاکتور:</span>
+              <span>{formatPrice(orderDetail.totalPrice)}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="text-center text-sm text-gray-500 mt-16 pt-8 border-t border-gray-200">
+          با تشکر از خرید شما از مرصادنت
+        </div>
+      </div>
+    )}
+    </>
   );
 }

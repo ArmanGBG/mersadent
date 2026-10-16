@@ -1,18 +1,10 @@
 {
-  "$schema": "https://schema.liara.ir/liara.json",
   "platform": "next",
-  "build": {
-    "location": "germany",
-    "path": "."
-  },
-  "start": {
-    "command": "npm run start",
-    "port": 3000
-  },
+  "port": 3000,
   "disks": [
     {
-      "name": "mersadent-market-disk",
-      "mountTo": "/app/public/uploads"
+      "name": "uploads",
+      "mountTo": "public/uploads"
     }
   ]
 }

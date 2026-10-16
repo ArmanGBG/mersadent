@@ -25,8 +25,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'محصول یافت نشد' }, { status: 404 });
     }
 
-    if (product.availability === 'out_of_stock') {
+    if (product.availability === 'out_of_stock' || product.stockQuantity <= 0) {
       return NextResponse.json({ error: 'محصول ناموجود است' }, { status: 400 });
+    }
+
+    if (quantity > product.stockQuantity) {
+      return NextResponse.json({ error: `حداکثر موجودی قابل سفارش ${product.stockQuantity} عدد است` }, { status: 400 });
     }
 
     if (!product.price) {

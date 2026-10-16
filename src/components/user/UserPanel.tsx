@@ -20,6 +20,8 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
+import { IRAN_PROVINCES } from '@/lib/iran-cities';
+import { SearchableSelect } from '@/components/admin/SearchableSelect';
 
 interface UserData {
   id: number;
@@ -27,6 +29,7 @@ interface UserData {
   phone: string | null;
   email: string | null;
   avatar: string | null;
+  userType?: string | null;
 }
 
 interface OrderItem {
@@ -100,6 +103,7 @@ export function UserPanel({ user, setUser, onNavigate, onAuthRequired, defaultTa
 
   // Profile form
   const [profileName, setProfileName] = useState('');
+  const [profileUserType, setProfileUserType] = useState('');
   const [profileEmail, setProfileEmail] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
 
@@ -169,6 +173,7 @@ export function UserPanel({ user, setUser, onNavigate, onAuthRequired, defaultTa
       queueMicrotask(() => {
         setProfileName(user.name || '');
         setProfileEmail(user.email || '');
+        setProfileUserType(user.userType || '');
       });
     }
   }, [user]);
@@ -180,7 +185,7 @@ export function UserPanel({ user, setUser, onNavigate, onAuthRequired, defaultTa
       const res = await fetch('/api/auth/profile', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ name: profileName, email: profileEmail || null }),
+        body: JSON.stringify({ name: profileName, email: profileEmail || null, userType: profileUserType || null }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -431,6 +436,21 @@ export function UserPanel({ user, setUser, onNavigate, onAuthRequired, defaultTa
                 <Input value={profileEmail} onChange={e => setProfileEmail(e.target.value)} className="h-10 text-sm" dir="ltr" type="email" />
               </div>
               <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-medium text-gray-600">نقش (شغل)</label>
+                <select
+                  value={profileUserType}
+                  onChange={e => setProfileUserType(e.target.value)}
+                  className="h-10 text-sm rounded-md border border-input bg-background px-3 py-2 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                >
+                  <option value="">انتخاب نقش...</option>
+                  <option value="دانشجو">دانشجو</option>
+                  <option value="دندانپزشک">دندانپزشک</option>
+                  <option value="متخصص">متخصص</option>
+                  <option value="لابراتوار">لابراتوار</option>
+                  <option value="سایر">سایر</option>
+                </select>
+              </div>
+              <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-medium text-gray-600">شماره موبایل</label>
                 <Input value={user.phone || ''} disabled className="h-10 text-sm bg-gray-50" dir="ltr" />
                 <p className="text-[10px] text-gray-400">شماره موبایل قابل تغییر نیست</p>
@@ -518,11 +538,24 @@ export function UserPanel({ user, setUser, onNavigate, onAuthRequired, defaultTa
             <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-medium text-gray-600">استان</label>
-                <Input value={addrProvince} onChange={e => setAddrProvince(e.target.value)} placeholder="استان" className="h-10 text-sm" />
+                <SearchableSelect
+                  value={addrProvince}
+                  onChange={(v) => { setAddrProvince(v); setAddrCity(''); }}
+                  options={Object.keys(IRAN_PROVINCES).map(p => ({ label: p, value: p }))}
+                  placeholder="انتخاب استان..."
+                  className="h-10"
+                />
               </div>
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-medium text-gray-600">شهر</label>
-                <Input value={addrCity} onChange={e => setAddrCity(e.target.value)} placeholder="شهر" className="h-10 text-sm" />
+                <SearchableSelect
+                  value={addrCity}
+                  onChange={setAddrCity}
+                  options={addrProvince ? (IRAN_PROVINCES as any)[addrProvince].map((c: string) => ({ label: c, value: c })) : []}
+                  placeholder="انتخاب شهر..."
+                  disabled={!addrProvince}
+                  className="h-10"
+                />
               </div>
             </div>
             <div className="flex flex-col gap-1.5">

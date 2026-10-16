@@ -11,12 +11,11 @@ import { Button } from '@/components/ui/button';
 
 const faNum = (n: number) => new Intl.NumberFormat('fa-IR').format(n);
 
-interface CompareFloatingBarProps {
-  /** Called when the user clicks the "مقایسه کن" button. */
-  onGoToCompare: () => void;
-}
 
-export function CompareFloatingBar({ onGoToCompare }: CompareFloatingBarProps) {
+
+import { useAppNavigation } from '@/hooks/useAppNavigation';
+export function CompareFloatingBar() {
+  const navigate = useAppNavigation();
   const { items, removeFromCompare, clearCompare, count, maxItems } = useCompare();
 
   return (
@@ -118,7 +117,7 @@ export function CompareFloatingBar({ onGoToCompare }: CompareFloatingBarProps) {
                   <span className="hidden md:inline">پاک کردن</span>
                 </Button>
                 <Button
-                  onClick={onGoToCompare}
+                  onClick={() => navigate({ type: 'compare' })}
                   size="sm"
                   className="h-10 gap-1.5 bg-teal-500 px-4 font-semibold text-white shadow-md hover:bg-teal-600"
                 >
